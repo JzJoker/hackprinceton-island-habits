@@ -21,6 +21,41 @@ import "dotenv/config";
 const PROJECT_ID = process.env.projid!;
 const PROJECT_SECRET = process.env.secret!;
 const CONVEX_URL = process.env.CONVEX_URL ?? process.env.VITE_CONVEX_URL;
+const BOT_PHONE = (process.env.BOT_PHONE ?? "+14155952874").replace(/\D/g, "");
+
+function toE164Like(value: unknown): string | null {
+  if (!value || typeof value !== "string") return null;
+  const digits = value.trim().replace(/\D/g, "");
+  if (digits.length < 10 || digits.length > 15) return null;
+  return `+${digits}`;
+}
+
+function collectPhones(space: any, message: any): string[] {
+  const raw: unknown[] = [];
+  const candidateArrays = [
+    space?.participants,
+    space?.members,
+    space?.users,
+    message?.participants,
+    message?.members,
+  ];
+  for (const arr of candidateArrays) {
+    if (!Array.isArray(arr)) continue;
+    for (const item of arr) {
+      raw.push(item?.phoneNumber, item?.address, item?.id, item);
+    }
+  }
+  raw.push(message?.sender?.phoneNumber, message?.sender?.address, message?.sender?.id);
+
+  return Array.from(
+    new Set(
+      raw
+        .map(toE164Like)
+        .filter((p): p is string => Boolean(p))
+        .filter((p) => p.replace(/\D/g, "") !== BOT_PHONE)
+    )
+  );
+}
 
 async function getRawClient(): Promise<AdvancedIMessage> {
   const tokenData = await cloud.issueImessageTokens(PROJECT_ID, PROJECT_SECRET);
@@ -162,17 +197,16 @@ async function listenForMessages() {
 
         try {
           const convex = new ConvexHttpClient(CONVEX_URL);
-          const anySpace = space as any;
-          const participants = [
-            ...(Array.isArray(anySpace.participants)
-              ? anySpace.participants.map((p: any) => p?.id).filter(Boolean)
-              : []),
-            ...(Array.isArray(anySpace.members)
-              ? anySpace.members.map((m: any) => m?.id).filter(Boolean)
-              : []),
-            message.sender.id,
-          ];
-          const phoneNumbers = Array.from(new Set(participants));
+          const phoneNumbers = collectPhones(space as any, message as any);
+          if (!phoneNumbers.length) {
+            await space.send(
+              text(
+                "Couldn't detect group member phone numbers. Make sure this is a group iMessage thread."
+              )
+            );
+            console.log("  -> No valid participant phones\n");
+            continue;
+          }
 
           const result = await (convex as any).mutation("islands:createIsland", {
             phoneNumbers,

@@ -1,61 +1,94 @@
-import { PhotonMessage, PhotonApp } from "./app.js";
+import { text } from "spectrum-ts";
 import { ConvexHttpClient } from "convex/browser";
+import { hasOnboarded, markOnboarded } from "../state/seen-spaces.js";
+import { isStartCommand } from "./mentions.js";
+import type { PhotonApp } from "./app.js";
 
-export async function runMessageLoop(app: PhotonApp): Promise<void> {
-  app.on("message", async (msg: PhotonMessage) => {
-    console.log(`[MESSAGE] From ${msg.from} in group ${msg.groupId}: ${msg.text}`);
+const APP_BASE_URL = process.env.APP_BASE_URL ?? "http://localhost:3000";
+const BOT_PHONE = (process.env.BOT_PHONE ?? "+14155952874").replace(/\D/g, "");
+const CONVEX_URL = process.env.CONVEX_URL ?? process.env.VITE_CONVEX_URL;
 
-    if (msg.text.trim() === "/start") {
-      await handleStartCommand(app, msg);
-    }
-  });
-
-  // Keep the process alive
-  await new Promise(() => {});
+function toE164Like(value: unknown): string | null {
+  if (!value || typeof value !== "string") return null;
+  const trimmed = value.trim();
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length < 10 || digits.length > 15) return null;
+  return `+${digits}`;
 }
 
-async function handleStartCommand(
-  app: PhotonApp,
-  msg: PhotonMessage
-): Promise<void> {
-  console.log(`[/start] Starting new island game`);
-
-  if (!msg.groupId) {
-    console.log("[/start] No group ID found");
-    return;
+function collectPhones(space: any, message: any): string[] {
+  const raw: unknown[] = [];
+  const participantArrays = [
+    space?.participants,
+    space?.members,
+    space?.users,
+    message?.participants,
+    message?.members,
+  ];
+  for (const arr of participantArrays) {
+    if (!Array.isArray(arr)) continue;
+    for (const item of arr) {
+      raw.push(item?.phoneNumber, item?.address, item?.id, item);
+    }
   }
+  raw.push(message?.sender?.phoneNumber, message?.sender?.address, message?.sender?.id);
 
-  try {
-    const convexUrl = process.env.CONVEX_URL;
-    if (!convexUrl) {
-      throw new Error("Missing CONVEX_URL in environment");
+  const phones = Array.from(
+    new Set(
+      raw
+        .map(toE164Like)
+        .filter((p): p is string => Boolean(p))
+        .filter((p) => p.replace(/\D/g, "") !== BOT_PHONE)
+    )
+  );
+  return phones;
+}
+
+export async function runMessageLoop(app: PhotonApp): Promise<void> {
+  for await (const [space, message] of app.messages) {
+    const content = message.content[0];
+    if (!content || content.type !== "plain_text") continue;
+
+    const body = content.text;
+    const time = message.timestamp.toLocaleTimeString();
+    console.log(`[${time}] space=${space.id} from=${message.sender.id}: ${body}`);
+
+    if (!isStartCommand(body)) continue;
+
+    if (hasOnboarded(space.id)) {
+      await space.send(text("The start process has already been initiated."));
+      continue;
     }
 
-    // Extract group member phone numbers; fallback to sender for one-person testing.
-    const rawPhones = msg.groupMembers?.length ? msg.groupMembers : [msg.from];
-    const phoneNumbers = Array.from(new Set(rawPhones)).filter(Boolean);
-    console.log(`[/start] Group has ${phoneNumbers.length} members: ${phoneNumbers.join(", ")}`);
+    if (!CONVEX_URL) {
+      await space.send(text("Missing CONVEX_URL in agent env. Cannot create room code."));
+      continue;
+    }
 
-    // Create island in Convex
-    const convex = new ConvexHttpClient(convexUrl);
-    const { code, islandId } = await (convex as any).mutation("islands:createIsland", {
-      phoneNumbers,
-    });
-    console.log(`[/start] Created island ${islandId} with code ${code}`);
+    try {
+      const phoneNumbers = collectPhones(space as any, message as any);
+      if (!phoneNumbers.length) {
+        await space.send(
+          text("Couldn't detect group member phone numbers. Make sure this is a group iMessage thread.")
+        );
+        continue;
+      }
 
-    // Send game code and onboarding link to group chat
-    const gameLink = `https://islandhabits.com/onboarding?code=${code}`;
-    const message = `🏝️ Island Habits Game Started!\n\nGame Code: ${code}\n\nJoin here: ${gameLink}\n\nSelect your phone number and enter your weekly goals!`;
+      const convex = new ConvexHttpClient(CONVEX_URL);
+      const result = await (convex as any).mutation("islands:createIsland", {
+        phoneNumbers,
+      });
+      const code = result.code as string;
+      const joinUrl = `${APP_BASE_URL}/onboarding?code=${code}`;
 
-    await app.sendMessage(msg.groupId, message);
-    console.log(`[/start] Sent onboarding message to group`);
-  } catch (err) {
-    console.error(`[/start] Error:`, err);
-    if (msg.groupId) {
-      await app.sendMessage(
-        msg.groupId,
-        "❌ Failed to start the game. Please try again."
+      markOnboarded(space.id);
+      await space.send(
+        text(`Island Habits started.\n\nRoom Code: ${code}\nJoin: ${joinUrl}`),
       );
+      console.log(`[/start] space=${space.id} code=${code} phones=${phoneNumbers.join(",")}`);
+    } catch (err: any) {
+      console.error(`[/start] failed:`, err);
+      await space.send(text("Failed to create room code. Try /start again."));
     }
   }
 }
