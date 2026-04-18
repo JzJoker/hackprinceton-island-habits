@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, Suspense } from 'react'
 import { useUser } from '@clerk/clerk-react'
 import { useQuery } from 'convex/react'
 import { useSearchParams } from 'react-router-dom'
