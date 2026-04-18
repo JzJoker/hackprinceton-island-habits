@@ -18,3 +18,4 @@ export async function createApp() {
 }
 
 export type PhotonApp = Awaited<ReturnType<typeof createApp>>;
+export type SpectrumApp = PhotonApp;

@@ -5,8 +5,9 @@ import { useConvex, useMutation } from 'convex/react'
 import type { Id } from '../../convex/_generated/dataModel'
 import { api } from '../../convex/_generated/api'
 import KnotapiJS from 'knotapi-js'
+import { getPhone } from '../hooks/useAuth'
 
-type Step = 'code' | 'phoneSelect' | 'goals' | 'complete'
+type Step = 'code' | 'goals' | 'complete'
 type SessionResponse = { session: string }
 
 const AMAZON_MERCHANT_ID = 44
@@ -25,13 +26,13 @@ export function OnboardingPage() {
   const createAgent = useMutation(api.agents.createAgent)
   const activateIsland = useMutation(api.islands.activateIsland)
 
+  const myPhone = getPhone() ?? ''
+
   const [step, setStep] = useState<Step>('code')
   const [code, setCode] = useState(searchParams.get('code') || '')
-  const [selectedPhone, setSelectedPhone] = useState('')
   const [goals, setGoals] = useState<string[]>([''])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [islandPhones, setIslandPhones] = useState<string[]>([])
   const [currentIslandId, setCurrentIslandId] = useState<Id<'islands'> | null>(
     null,
   )
@@ -63,23 +64,13 @@ export function OnboardingPage() {
       if (island.status !== 'onboarding') {
         throw new Error('Island is not in onboarding mode')
       }
-      setIslandPhones(island.phoneNumbers || [])
       setCurrentIslandId(island._id)
-      setStep('phoneSelect')
+      setStep('goals')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Island not found')
     } finally {
       setLoading(false)
     }
-  }
-
-  const handlePhoneSelect = () => {
-    if (!selectedPhone) {
-      setError('Please select a phone number')
-      return
-    }
-    setError(null)
-    setStep('goals')
   }
 
   const addGoalField = () => {
@@ -121,15 +112,15 @@ export function OnboardingPage() {
     setError(null)
 
     try {
-      await joinIsland({ islandId: currentIslandId, phoneNumber: selectedPhone })
+      await joinIsland({ islandId: currentIslandId, phoneNumber: myPhone })
       await addGoals({
         islandId: currentIslandId,
-        phoneNumber: selectedPhone,
+        phoneNumber: myPhone,
         goals: filledGoals,
       })
       await createAgent({
         islandId: currentIslandId,
-        phoneNumber: selectedPhone,
+        phoneNumber: myPhone,
         goals: filledGoals,
       })
       await activateIsland({ islandId: currentIslandId })
@@ -198,7 +189,6 @@ export function OnboardingPage() {
           </h1>
           <p className="text-base text-slate-300 sm:text-lg">
             {step === 'code' && 'Enter your game code to join'}
-            {step === 'phoneSelect' && 'Select your phone number'}
             {step === 'goals' && 'What are your goals for this week?'}
             {step === 'complete' && 'Onboarding complete!'}
           </p>
@@ -230,36 +220,6 @@ export function OnboardingPage() {
               {loading ? 'Joining...' : 'Join Island'}
             </button>
           </form>
-        )}
-
-        {step === 'phoneSelect' && (
-          <div className="space-y-4">
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium text-slate-200">
-                Which phone number is yours?
-              </legend>
-              {islandPhones.map((phone) => (
-                <label key={phone} className="flex items-center gap-3">
-                  <input
-                    type="radio"
-                    name="phone"
-                    value={phone}
-                    checked={selectedPhone === phone}
-                    onChange={(e) => setSelectedPhone(e.target.value)}
-                    className="h-4 w-4 border-slate-600 text-cyan-400"
-                  />
-                  <span className="text-slate-300">{phone}</span>
-                </label>
-              ))}
-            </fieldset>
-            {error && <p className="text-sm text-rose-300">{error}</p>}
-            <button
-              onClick={handlePhoneSelect}
-              className="w-full rounded-lg bg-cyan-400 px-4 py-2 font-semibold text-slate-900 transition hover:bg-cyan-300"
-            >
-              Continue
-            </button>
-          </div>
         )}
 
         {step === 'goals' && (
@@ -327,7 +287,7 @@ export function OnboardingPage() {
             <button
               onClick={() =>
                 navigate(
-                  `/dashboard?islandId=${currentIslandId ?? ''}&phone=${encodeURIComponent(selectedPhone)}`,
+                  `/dashboard?islandId=${currentIslandId ?? ''}&phone=${encodeURIComponent(myPhone)}`,
                 )
               }
               className="w-full rounded-lg bg-cyan-400 px-4 py-2 font-semibold text-slate-900 transition hover:bg-cyan-300"

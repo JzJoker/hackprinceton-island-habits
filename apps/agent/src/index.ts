@@ -15,6 +15,7 @@ async function main() {
 
   startHttpServer(app);
   await runMessageLoop(app);
+
 }
 
 main().catch((err) => {
