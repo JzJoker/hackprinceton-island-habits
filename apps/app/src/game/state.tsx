@@ -433,9 +433,10 @@ export const GameProvider = ({
   const [toast, setToast] = useState<string | null>(null);
   const [islandName] = useState(seededIslandName);
 
-  // Island era state — start on era 0 (Pine Hollow) with no history
+  // Island era state — start on era 0 (Pine Hollow) with no history.
+  // islandHistory is derived below so every client (not just the one who
+  // clicked Fly) can open the visit UI for past eras.
   const [islandEra, setIslandEra] = useState(initialData?.islandEra ?? 0);
-  const [islandHistory, setIslandHistory] = useState<IslandSnapshot[]>([]);
   const [trackAgent, setTrackAgent] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isVisiting, setIsVisiting] = useState(false);
@@ -487,16 +488,6 @@ export const GameProvider = ({
     const next = ISLAND_TIERS[islandEra + 1];
     if (!next) return;
     if (level < next.unlockLevel) { showToast(`Need Lv.${next.unlockLevel}`); return; }
-    // Save snapshot locally for the "visit history" UI.
-    setIslandHistory(h => [...h, {
-      era: islandEra,
-      name: ISLAND_TIERS[islandEra].name,
-      emoji: ISLAND_TIERS[islandEra].emoji,
-      buildings,
-      level,
-      coinsEarned: coins,
-      graduatedAt: new Date().toISOString(),
-    }]);
     setIsTransitioning(true);
     // In Convex mode, the era is the source of truth — mutating it on the
     // server makes old-era buildings stay parked (placedAtEra < new era) and
@@ -578,6 +569,27 @@ export const GameProvider = ({
       setIsVisiting(false);
     }, 900);
   }, []);
+
+  // Derived: history of past eras, built from the current era. Every client
+  // (not just the one who clicked Fly) can open the visit UI for any era
+  // they've already graduated past, because era lives on the server.
+  const islandHistory = useMemo<IslandSnapshot[]>(() => {
+    const entries: IslandSnapshot[] = [];
+    for (let era = 0; era < islandEra; era += 1) {
+      const tier = ISLAND_TIERS[era];
+      if (!tier) continue;
+      entries.push({
+        era,
+        name: tier.name,
+        emoji: tier.emoji,
+        buildings: [],        // visit view fetches its own snapshot
+        level: 0,
+        coinsEarned: 0,
+        graduatedAt: "",
+      });
+    }
+    return entries;
+  }, [islandEra]);
 
   // Derived: group motivation factor (0–1). Used by ticker + UI.
   const groupMotivation = useMemo(() => {
