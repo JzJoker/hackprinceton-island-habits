@@ -120,106 +120,31 @@ const IslandBg = () => (
       className="absolute inset-0"
       style={{
         background:
-          'linear-gradient(180deg, #0a1226 0%, #0f2240 28%, #0b2a32 62%, #061812 100%)',
+          'linear-gradient(180deg, #ecd8bf 0%, #b9e6ea 16%, #9ad3dd 62%, #89c8d6 100%)',
       }}
     />
     <div
       className="absolute inset-0"
       style={{
         background:
-          'radial-gradient(ellipse 110% 55% at 50% 82%, rgba(40,130,80,0.25) 0%, transparent 70%)',
+          'radial-gradient(ellipse 82% 46% at 50% 83%, rgba(130,207,220,0.65) 0%, rgba(130,207,220,0.0) 100%)',
       }}
     />
 
-    <div
-      className="absolute"
-      style={{
-        top: '56px',
-        right: '9%',
-        width: '76px',
-        height: '76px',
-        borderRadius: '50%',
-        background:
-          'radial-gradient(circle at 38% 35%, #fff5cc 0%, #ffe082 60%, rgba(255,210,80,0.3) 85%, transparent 100%)',
-        boxShadow: '0 0 60px 18px rgba(255,210,80,0.14)',
-      }}
-    />
-    <div
-      className="absolute"
-      style={{
-        top: '36px',
-        right: 'calc(9% - 22px)',
-        width: '120px',
-        height: '120px',
-        borderRadius: '50%',
-        border: '1px solid rgba(255,220,100,0.07)',
-      }}
-    />
-
-    {[...Array(22)].map((_, i) => {
-      const warm = i % 6 === 0
-      const big = i % 9 === 0
-      return (
-        <div
-          key={i}
-          className="absolute rounded-full"
-          style={{
-            width: big ? 2.5 : i % 3 === 0 ? 2 : 1.5,
-            height: big ? 2.5 : i % 3 === 0 ? 2 : 1.5,
-            left: `${(i * 19 + i * i * 3 + 4) % 95}%`,
-            top: `${3 + ((i * 11) % 45)}%`,
-            background: warm ? '#ffd878' : '#e8eeff',
-            opacity: 0.35 + (i % 5) * 0.14,
-            animation:
-              i % 3 === 0
-                ? `pulse ${1.8 + (i % 4) * 0.7}s ease-in-out infinite ${(i * 0.4) % 3}s`
-                : 'none',
-          }}
-        />
-      )
-    })}
-
-    <div
-      className="absolute bottom-0 left-0 right-0"
-      style={{
-        height: '180px',
-        background:
-          'linear-gradient(to top, #030f08 0%, #071810 55%, transparent 100%)',
-      }}
-    />
-
-    <svg
-      viewBox="0 0 1200 200"
-      preserveAspectRatio="none"
-      className="absolute bottom-0 left-0 right-0"
-      style={{ width: '100%', height: '200px', display: 'block' }}
-    >
-      <path
-        d="M0 200 L0 120 Q200 95 400 110 Q600 125 800 95 Q1000 65 1200 105 L1200 200 Z"
-        fill="#0a1f12"
-      />
-      <path
-        d="M0 200 L0 150 Q150 135 350 145 Q550 155 750 135 Q950 115 1200 145 L1200 200 Z"
-        fill="#04120a"
-      />
-    </svg>
-
-    {[...Array(7)].map((_, i) => (
+    {[...Array(6)].map((_, i) => (
       <div
         key={i}
-        className="absolute rounded-full"
         style={{
-          width: 5,
-          height: 5,
-          background: i % 2 === 0 ? '#b4ff70' : '#ffe070',
-          left: `${10 + i * 12}%`,
-          top: `${62 + (i % 3) * 7}%`,
-          opacity: 0.7,
-          boxShadow:
-            i % 2 === 0
-              ? '0 0 10px 3px rgba(150,255,70,0.4)'
-              : '0 0 10px 3px rgba(255,220,50,0.35)',
-          animation: `ping ${1.4 + i * 0.35}s ease-in-out infinite ${i * 0.55}s`,
+          position: 'absolute',
+          width: 180 + (i % 3) * 110,
+          height: 180 + (i % 3) * 110,
+          borderRadius: '50%',
+          background: i % 2 === 0 ? 'rgba(255,255,255,0.28)' : 'rgba(199,236,243,0.34)',
+          left: `${(i * 17 + i * i * 5) % 94}%`,
+          top: `${2 + (i * 11 + i * 9) % 72}%`,
+          opacity: 0.55,
+          filter: 'blur(44px)',
+          transform: 'translate(-50%, -50%)',
         }}
       />
     ))}
@@ -228,15 +153,15 @@ const IslandBg = () => (
 
 const clerkAppearance = {
   variables: {
-    colorPrimary: '#4db368',
+    colorPrimary: '#57d196',
     colorBackground: 'transparent',
-    colorInputBackground: 'rgba(255,255,255,0.05)',
-    colorInputText: '#f0efe8',
-    colorText: '#ede8d8',
-    colorTextSecondary: 'rgba(230,220,190,0.6)',
-    colorNeutral: '#b8c8a0',
+    colorInputBackground: '#ffffff',
+    colorInputText: '#1d3451',
+    colorText: '#223856',
+    colorTextSecondary: '#6d7b8f',
+    colorNeutral: '#7f95ab',
     colorDanger: '#f87171',
-    borderRadius: '12px',
+    borderRadius: '14px',
     fontFamily: "'Nunito', inherit",
     fontSize: '14px',
   },
@@ -267,15 +192,15 @@ const clerkAppearance = {
     headerTitle:    { display: 'none' },
     headerSubtitle: { display: 'none' },
     socialButtonsBlockButton: {
-      background: 'rgba(255,255,255,0.06)',
-      border: '1.5px solid rgba(255,255,255,0.12)',
-      color: '#ede8d8',
-      borderRadius: '12px',
+      background: '#ffffff',
+      border: '2px solid #d4e5ef',
+      color: '#1d3451',
+      borderRadius: '14px',
     },
-    dividerRow:  { color: 'rgba(210,200,160,0.3)' },
-    dividerLine: { background: 'rgba(210,200,160,0.15)' },
+    dividerRow:  { color: '#9db1c7' },
+    dividerLine: { background: '#d6e4f1' },
     formFieldLabel: {
-      color: 'rgba(220,210,170,0.75)',
+      color: '#6c86a4',
       fontSize: '11px',
       fontWeight: '800',
       textTransform: 'uppercase',
@@ -283,49 +208,49 @@ const clerkAppearance = {
       marginBottom: '6px',
     },
     formFieldInput: {
-      background: 'rgba(255,255,255,0.05)',
-      border: '1.5px solid rgba(255,255,255,0.1)',
-      borderRadius: '12px',
-      color: '#f0efe8',
+      background: '#ffffff',
+      border: '2px solid #d6e5f2',
+      borderRadius: '14px',
+      color: '#1d3451',
       fontSize: '14px',
       fontWeight: '700',
       padding: '11px 14px',
       boxShadow: 'none',
     },
     formButtonPrimary: {
-      background: 'linear-gradient(135deg, #4db368 0%, #389150 100%)',
-      borderRadius: '12px',
+      background: 'linear-gradient(135deg, #57d196 0%, #3db97f 100%)',
+      borderRadius: '14px',
       fontWeight: '900',
       fontSize: '15px',
       padding: '12px',
-      boxShadow: '0 4px 20px -4px rgba(60,180,90,0.5)',
-      border: 'none',
+      boxShadow: '0 8px 18px -8px rgba(36,122,78,0.48)',
+      border: '2px solid rgba(27,64,45,0.16)',
       textTransform: 'none',
     },
     footer:       { background: 'transparent', padding: '14px 0 0', margin: 0, boxShadow: 'none', borderTop: 'none' },
     footerAction: { background: 'transparent', padding: 0, margin: 0 },
-    footerActionLink: { color: '#5fcc7c', fontWeight: '800' },
-    identityPreviewText: { color: '#ede8d8' },
-    identityPreviewEditButton: { color: '#5fcc7c' },
+    footerActionLink: { color: '#31557d', fontWeight: '800' },
+    identityPreviewText: { color: '#223856' },
+    identityPreviewEditButton: { color: '#31557d' },
     otpCodeFieldInput: {
-      background: 'rgba(255,255,255,0.05)',
-      border: '1.5px solid rgba(255,255,255,0.1)',
-      borderRadius: '12px',
-      color: '#f0efe8',
+      background: '#ffffff',
+      border: '2px solid #d6e5f2',
+      borderRadius: '14px',
+      color: '#1d3451',
       fontWeight: '900',
       fontSize: '22px',
     },
     phoneInputBox: {
-      background: 'rgba(255,255,255,0.05)',
-      border: '1.5px solid rgba(255,255,255,0.1)',
-      borderRadius: '12px',
+      background: '#ffffff',
+      border: '2px solid #d6e5f2',
+      borderRadius: '14px',
     },
-    formFieldInputShowPasswordButton: { color: 'rgba(210,200,160,0.5)' },
+    formFieldInputShowPasswordButton: { color: '#7a91a9' },
     alert: {
-      background: 'rgba(248,113,113,0.09)',
-      border: '1px solid rgba(248,113,113,0.28)',
+      background: 'rgba(248,113,113,0.1)',
+      border: '1px solid rgba(248,113,113,0.25)',
       borderRadius: '12px',
-      color: '#fca5a5',
+      color: '#b83732',
     },
   },
 }
@@ -336,8 +261,8 @@ const Badge = ({ label, accent }: { label: string; accent: string }) => (
       fontSize: '11px',
       fontFamily: "'Nunito', sans-serif",
       fontWeight: 800,
-      background: 'rgba(255,255,255,0.05)',
-      border: `1.5px solid ${accent}38`,
+      background: '#ffffff',
+      border: `1.5px solid ${accent}55`,
       color: accent,
       padding: '4px 10px',
       borderRadius: '999px',
@@ -357,28 +282,27 @@ export function SignUpPage() {
     fontFamily: "'Fredoka One', cursive",
     fontWeight: 400,
     letterSpacing: '0.5px',
-    color: '#f5f0e0',
-    textShadow: '0 2px 12px rgba(0,0,0,0.5)',
+    color: '#1d3451',
     margin: 0,
   }
   const subtitleStyle: React.CSSProperties = {
     fontFamily: "'Nunito', sans-serif",
     fontWeight: 700,
-    color: 'rgba(230,220,180,0.65)',
+    color: '#6d7b8f',
     fontSize: '13px',
     margin: '6px 0 0',
   }
   const welcomeStyle: React.CSSProperties = {
     fontFamily: "'Fredoka One', cursive",
     fontWeight: 400,
-    color: '#f5f0e0',
+    color: '#1d3451',
     letterSpacing: '0.3px',
     margin: 0,
   }
   const hintStyle: React.CSSProperties = {
     fontFamily: "'Nunito', sans-serif",
     fontWeight: 700,
-    color: 'rgba(210,200,160,0.55)',
+    color: '#6d7b8f',
     fontSize: '12px',
     margin: '4px 0 0',
   }
@@ -408,12 +332,9 @@ export function SignUpPage() {
               borderRadius: '28px',
               overflow: 'hidden',
               background:
-                'linear-gradient(165deg, rgba(18,28,40,0.92) 0%, rgba(10,20,28,0.94) 100%)',
-              backdropFilter: 'blur(24px)',
-              WebkitBackdropFilter: 'blur(24px)',
-              border: '1.5px solid rgba(255,220,100,0.1)',
-              boxShadow:
-                '0 24px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
+                'linear-gradient(180deg, #fffef8 0%, #f7f2e6 100%)',
+              border: '2px solid #d7bc8f',
+              boxShadow: '0 30px 64px -36px rgba(22,49,76,0.78)',
             }}
           >
             {/* Header */}
@@ -423,9 +344,9 @@ export function SignUpPage() {
                   display: 'inline-flex',
                   padding: '10px',
                   borderRadius: '22px',
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1.5px solid rgba(255,220,100,0.14)',
-                  boxShadow: '0 6px 20px rgba(0,0,0,0.35)',
+                  background: '#ffffff',
+                  border: '1.5px solid #d6e5f2',
+                  boxShadow: '0 10px 16px -14px rgba(29,52,81,0.6)',
                   marginBottom: '14px',
                 }}
               >
@@ -454,7 +375,7 @@ export function SignUpPage() {
                 height: '1px',
                 margin: '22px 24px 0',
                 background:
-                  'linear-gradient(to right, transparent, rgba(255,220,100,0.18), transparent)',
+                  'linear-gradient(to right, transparent, rgba(122,159,191,0.35), transparent)',
               }}
             />
 
@@ -480,7 +401,7 @@ export function SignUpPage() {
             style={{
               textAlign: 'center',
               fontSize: '10px',
-              color: 'rgba(200,185,140,0.28)',
+              color: 'rgba(43,73,102,0.46)',
               fontFamily: "'Nunito', sans-serif",
               fontWeight: 700,
               marginTop: '16px',
