@@ -70,14 +70,21 @@ def call_k2_json(system: str, user: str, max_tokens: int = 200) -> Tuple[dict, O
 
 # ── Named helpers ─────────────────────────────────────────────────────────────
 
-def generate_morning_reminder(personality: dict, goal_texts: list, miss_streak: int) -> Tuple[str, Optional[str]]:
+def generate_morning_reminder(
+    personality: dict,
+    goal_texts: list,
+    miss_streak: int,
+    team_recap: str = "",
+) -> Tuple[str, Optional[str]]:
     streak_note = f"Miss streak: {miss_streak} days." if miss_streak >= 3 else ""
+    recap_note = f"Yesterday on the island: {team_recap}" if team_recap else ""
     user = (
         f"Agent personality: {json.dumps(personality)}\n"
         f"Today's goal: {', '.join(goal_texts)}\n"
+        f"{recap_note}\n"
         f"{streak_note}"
     ).strip()
-    return call_k2(_load("prompt_morning_reminder.md"), user, max_tokens=100)
+    return call_k2(_load("prompt_morning_reminder.md"), user, max_tokens=140)
 
 
 def generate_weekly_summary(

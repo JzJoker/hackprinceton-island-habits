@@ -8,10 +8,20 @@ from jobs.photon import send_group_message
 
 @jobs_bp.post("/weekly-summary")
 def weekly_summary():
+    """Run the weekly recap for every island that just crossed a 7-day boundary.
+
+    The `islandsReadyForWeeklySummary` Convex query filters down to islands
+    where dayCount is a multiple of 7 AND we haven't already sent a summary
+    for that boundary. That lets callers invoke this endpoint daily (or
+    even hourly) without spamming the group iMessage.
+    """
     db = get_client()
 
-    islands = db.query("jobQueries:getIslandsForWeeklySummary")
+    islands = db.query("jobQueries:islandsReadyForWeeklySummary")
     sent = 0
+
+    # Fetch agents once per run so we can pick a logging agent per island.
+    all_members = db.query("jobQueries:getActiveMembersWithGoals")
 
     for entry in islands:
         island = entry["island"]
@@ -33,10 +43,8 @@ def weekly_summary():
 
         send_group_message(phones, narrative)
 
-        # Use first agent on island for logging
-        agents = db.query("jobQueries:getActiveMembersWithGoals")
         island_agent = next(
-            (e["agent"] for e in agents if e["island"]["_id"] == island["_id"]),
+            (e["agent"] for e in all_members if e["island"]["_id"] == island["_id"]),
             None,
         )
         if island_agent:

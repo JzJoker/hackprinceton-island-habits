@@ -17,6 +17,10 @@ export default defineSchema({
     // Graduation era (0 = Pine Hollow, 1 = Amber Ridge, …). Undefined/0 for
     // islands created before this field existed — treated as era 0.
     era: v.optional(v.number()),
+    // `island.dayCount` value at the time the most recent weekly summary was
+    // sent. Weekly cron only fires for an island when dayCount crosses a new
+    // multiple of 7 past this value, so each week-boundary only sends once.
+    lastWeeklySummaryDayCount: v.optional(v.number()),
     difficulty: v.union(v.literal("easy"), v.literal("normal"), v.literal("hard")),
     gridSize: v.object({
       width: v.number(),

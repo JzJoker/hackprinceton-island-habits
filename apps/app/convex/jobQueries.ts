@@ -1,4 +1,5 @@
 import { query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 
@@ -246,5 +247,213 @@ export const getIslandPhoneNumbers = query({
       .withIndex("by_island", (q) => q.eq("islandId", islandId))
       .collect();
     return members.map((m) => m.phoneNumber);
+  },
+});
+
+// Resolve a phone/email identity to a friendly display name. Falls back to
+// the last 4 digits of the phone (or local-part of an email) so UI never
+// shows the raw identifier.
+async function lookupDisplayName(
+  ctx: QueryCtx,
+  phoneNumber: string,
+): Promise<string> {
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_phone", (q) => q.eq("phoneNumber", phoneNumber))
+    .first();
+  if (user?.displayName) return user.displayName;
+  if (phoneNumber.includes("@")) {
+    const local = phoneNumber.split("@")[0] ?? phoneNumber;
+    return local;
+  }
+  const digits = phoneNumber.replace(/\D/g, "");
+  return digits.length >= 4 ? `Player ${digits.slice(-4)}` : phoneNumber;
+}
+
+// Returns yesterday's check-in / miss counts for every member of an island.
+// Used by the morning reminder so K2 can reference who completed vs missed
+// when writing each user's personal text.
+export const getYesterdayIslandStats = query({
+  args: { islandId: v.id("islands"), date: v.string() },
+  handler: async (ctx, { islandId, date }) => {
+    const startOfDay = new Date(date + "T00:00:00Z").getTime();
+    const endOfDay = startOfDay + 86400000;
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_island", (q) => q.eq("islandId", islandId))
+      .filter((q) =>
+        q.and(
+          q.gte(q.field("timestamp"), startOfDay),
+          q.lt(q.field("timestamp"), endOfDay),
+        ),
+      )
+      .collect();
+
+    const completedByPhone = new Map<string, number>();
+    const missedByPhone = new Map<string, number>();
+    for (const e of events) {
+      const phone = (e.payload as { phoneNumber?: string } | null)?.phoneNumber;
+      if (!phone) continue;
+      if (e.type === "check_in") {
+        completedByPhone.set(phone, (completedByPhone.get(phone) ?? 0) + 1);
+      } else if (e.type === "miss") {
+        missedByPhone.set(phone, (missedByPhone.get(phone) ?? 0) + 1);
+      }
+    }
+
+    const phones = new Set([
+      ...completedByPhone.keys(),
+      ...missedByPhone.keys(),
+    ]);
+    const rows = await Promise.all(
+      Array.from(phones).map(async (phone) => ({
+        phone,
+        displayName: await lookupDisplayName(ctx, phone),
+        completed: completedByPhone.get(phone) ?? 0,
+        missed: missedByPhone.get(phone) ?? 0,
+      })),
+    );
+    rows.sort((a, b) => b.completed - a.completed);
+
+    const completed = rows.filter((r) => r.completed > 0);
+    const missed = rows.filter((r) => r.missed > 0);
+    return { date, completed, missed };
+  },
+});
+
+// Same shape as getIslandsForWeeklySummary but only returns islands that
+// have actually crossed a new week boundary since their last summary.
+export const islandsReadyForWeeklySummary = query({
+  args: {},
+  handler: async (ctx) => {
+    const islands = await ctx.db.query("islands").collect();
+    const results: {
+      island: Doc<"islands">;
+      phones: string[];
+      events: Doc<"events">[];
+    }[] = [];
+
+    for (const island of islands) {
+      const dayCount = island.dayCount ?? 0;
+      if (dayCount < 7 || dayCount % 7 !== 0) continue;
+      if ((island.lastWeeklySummaryDayCount ?? 0) >= dayCount) continue;
+
+      const members = await ctx.db
+        .query("islandMembers")
+        .withIndex("by_island", (q) => q.eq("islandId", island._id))
+        .collect();
+      const phones = members.map((m) => m.phoneNumber);
+      if (phones.length === 0) continue;
+
+      const since = Date.now() - 7 * 86400000;
+      const events = await ctx.db
+        .query("events")
+        .withIndex("by_island", (q) => q.eq("islandId", island._id))
+        .filter((q) => q.gte(q.field("timestamp"), since))
+        .collect();
+
+      results.push({ island, phones, events });
+    }
+
+    return results;
+  },
+});
+
+// Full digest used by RecapOverlay on the client. Combines island progress
+// (dayCount → weekNumber / dayOfWeek), aggregated 7-day stats, per-user
+// contribution rows, and the latest K2 narrative (if one has been recorded).
+export const getIslandWeeklyDigest = query({
+  args: { islandId: v.id("islands") },
+  handler: async (ctx, { islandId }) => {
+    const island = await ctx.db.get(islandId);
+    if (!island) return null;
+
+    const dayCount = island.dayCount ?? 1;
+    const weekNumber = Math.max(1, Math.ceil(dayCount / 7));
+    const dayOfWeek = ((dayCount - 1) % 7) + 1;           // 1..7
+    const daysUntilNextReport = Math.max(0, 7 - dayOfWeek);
+    const weekStartDay = (weekNumber - 1) * 7 + 1;        // first day of current week
+
+    // Pull events from the start of this week (not a hard 7-day window) so
+    // week 1 day 3 doesn't bleed into "last week".
+    const msPerDay = 86400000;
+    const windowStart = Date.now() - Math.min(7, dayOfWeek) * msPerDay;
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_island", (q) => q.eq("islandId", islandId))
+      .filter((q) => q.gte(q.field("timestamp"), windowStart))
+      .collect();
+
+    const checkIns = events.filter((e) => e.type === "check_in");
+    const misses = events.filter((e) => e.type === "miss");
+    const buildsComplete = events.filter((e) => e.type === "build_complete");
+    const totalActions = checkIns.length + misses.length;
+    const completionPct = totalActions > 0
+      ? Math.round((checkIns.length / totalActions) * 100)
+      : 0;
+
+    const checkInByPhone = new Map<string, number>();
+    const missByPhone = new Map<string, number>();
+    for (const e of checkIns) {
+      const p = (e.payload as { phoneNumber?: string } | null)?.phoneNumber;
+      if (p) checkInByPhone.set(p, (checkInByPhone.get(p) ?? 0) + 1);
+    }
+    for (const e of misses) {
+      const p = (e.payload as { phoneNumber?: string } | null)?.phoneNumber;
+      if (p) missByPhone.set(p, (missByPhone.get(p) ?? 0) + 1);
+    }
+
+    const members = await ctx.db
+      .query("islandMembers")
+      .withIndex("by_island", (q) => q.eq("islandId", islandId))
+      .collect();
+    const perUser = await Promise.all(
+      members.map(async (m) => {
+        const completed = checkInByPhone.get(m.phoneNumber) ?? 0;
+        const missed = missByPhone.get(m.phoneNumber) ?? 0;
+        const total = completed + missed;
+        return {
+          phone: m.phoneNumber,
+          displayName: await lookupDisplayName(ctx, m.phoneNumber),
+          completed,
+          missed,
+          pct: total > 0 ? Math.round((completed / total) * 100) : 0,
+        };
+      }),
+    );
+    perUser.sort((a, b) => b.completed - a.completed);
+
+    // Latest weekly narrative (the K2-generated text sent to iMessage)
+    const weeklyMessages = await ctx.db
+      .query("aiMessages")
+      .filter((q) => q.eq(q.field("channel"), "imessage_group"))
+      .collect();
+    const weeklyForThisIsland = weeklyMessages.filter((m) => {
+      const ctxObj = (m.context as { islandId?: string } | null | undefined);
+      return ctxObj?.islandId === islandId;
+    });
+    weeklyForThisIsland.sort((a, b) => b.sentAt - a.sentAt);
+    const latest = weeklyForThisIsland[0] ?? null;
+
+    return {
+      islandName: island.name,
+      dayCount,
+      weekNumber,
+      dayOfWeek,
+      daysUntilNextReport,
+      weekStartDay,
+      completionPct,
+      checkInCount: checkIns.length,
+      missCount: misses.length,
+      buildingsCompleted: buildsComplete.length,
+      perUser,
+      lastWeeklySummaryDayCount: island.lastWeeklySummaryDayCount ?? 0,
+      latestNarrative: latest
+        ? {
+            content: latest.content,
+            sentAt: latest.sentAt,
+          }
+        : null,
+    };
   },
 });

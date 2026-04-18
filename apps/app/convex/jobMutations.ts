@@ -114,12 +114,22 @@ export const recordWeeklySummary = mutation({
       payload: { content, stats },
       timestamp: Date.now(),
     });
+    // Embed islandId in the aiMessages context so the client digest query
+    // can filter messages per island without a dedicated index.
     await ctx.db.insert("aiMessages", {
       agentId,
       channel: "imessage_group",
       content,
-      context: stats,  // schema now accepts v.any()
+      context: { ...(stats ?? {}), islandId },
       sentAt: Date.now(),
     });
+    // Mark this week as handled so islandsReadyForWeeklySummary skips it
+    // until the next multiple-of-7 boundary.
+    const island = await ctx.db.get(islandId);
+    if (island) {
+      await ctx.db.patch(islandId, {
+        lastWeeklySummaryDayCount: island.dayCount ?? 0,
+      });
+    }
   },
 });

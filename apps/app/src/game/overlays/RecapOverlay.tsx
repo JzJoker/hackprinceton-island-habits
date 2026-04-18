@@ -1,14 +1,69 @@
-import { X, Sparkles, TrendingUp, Coins, Trophy } from "lucide-react";
+import { X, Sparkles, TrendingUp, Coins, Trophy, Clock } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { useGame } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 
+const ENCOURAGEMENTS = [
+  "Week just started — plenty of room to surprise yourself.",
+  "Early in the week. Stack two good days back-to-back.",
+  "Halfway point. The habit is starting to feel normal.",
+  "Past halfway. Lock in the finish.",
+  "Almost at the report — one strong push left.",
+  "Last couple days. Close out clean.",
+  "Final day before the weekly recap drops.",
+];
+
 export const RecapOverlay = () => {
-  const { screen, setScreen, agents } = useGame();
+  const { screen, setScreen, islandId, islandName, agents } = useGame();
   const { closing, close } = useOverlayClose(() => setScreen(null));
+
+  // Always call hooks before any early return.
+  const digest = useQuery(
+    api.jobQueries.getIslandWeeklyDigest,
+    islandId ? { islandId: islandId as Id<"islands"> } : "skip",
+  );
 
   if (screen !== "recap" && !closing) return null;
 
-  const total = agents.reduce((s, a) => s + a.mood, 0);
+  const dayCount = digest?.dayCount ?? 1;
+  const weekNumber = digest?.weekNumber ?? 1;
+  const dayOfWeek = digest?.dayOfWeek ?? 1;
+  const daysUntilNext = digest?.daysUntilNextReport ?? 0;
+  const weekComplete = daysUntilNext === 0;
+
+  const completionPct = digest?.completionPct ?? 0;
+  const checkInCount = digest?.checkInCount ?? 0;
+  const buildingsCompleted = digest?.buildingsCompleted ?? 0;
+  const narrative = digest?.latestNarrative;
+  const perUser = digest?.perUser ?? [];
+
+  const encouragementIdx = Math.min(ENCOURAGEMENTS.length - 1, Math.max(0, dayOfWeek - 1));
+  const encouragement = ENCOURAGEMENTS[encouragementIdx];
+
+  // Prefer server-side per-user contribution data when available; otherwise
+  // fall back to the in-memory agents array so the overlay still renders.
+  const contributionRows = perUser.length > 0
+    ? perUser.map((row) => {
+        const agent = agents.find((a) => a.id === row.phone);
+        return {
+          id: row.phone,
+          name: row.displayName || agent?.name || "Player",
+          img: agent?.img ?? "",
+          pct: row.pct,
+          completed: row.completed,
+          missed: row.missed,
+        };
+      })
+    : agents.map((a) => ({
+        id: a.id,
+        name: a.name,
+        img: a.img,
+        pct: a.mood,
+        completed: 0,
+        missed: 0,
+      }));
 
   return (
     <div
@@ -27,7 +82,9 @@ export const RecapOverlay = () => {
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Weekly recap</p>
-              <p className="display-font text-base font-bold">Pine Hollow · Week 12</p>
+              <p className="display-font text-base font-bold">
+                {islandName || digest?.islandName || "Island"} · Week {weekNumber}
+              </p>
             </div>
           </div>
           <button onClick={close} className="h-9 w-9 rounded-xl bg-muted hover:bg-muted-foreground/20 flex items-center justify-center transition">
@@ -36,44 +93,99 @@ export const RecapOverlay = () => {
         </header>
 
         <div className="overflow-y-auto p-5 space-y-4">
-          {/* AI narrative */}
-          <div className="quest-scroll p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Sparkles className="h-3.5 w-3.5 text-accent" />
-              <p className="text-[10px] font-bold uppercase tracking-wider text-accent">AI Narrative</p>
+          {/* Week progress */}
+          <div className="bg-muted/40 rounded-2xl p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Day {dayOfWeek} of 7
+              </p>
+              <p className="text-[11px] font-bold text-foreground/80">
+                {weekComplete ? "Week complete ✓" : `${daysUntilNext} day${daysUntilNext === 1 ? "" : "s"} until report`}
+              </p>
             </div>
-            <p className="text-sm leading-relaxed text-foreground font-semibold">
-              "This week, <b>Pine Hollow</b> bloomed. Jordan's 12-day streak inspired the group, and Kael led 4 gym sessions.
-              Mei missed two morning walks — the island misses her. Together you completed <b>65%</b> of goals
-              and earned enough coins to unlock the <b>Library</b>. The bonfire still flickers warmly tonight."
-            </p>
+            <div className="xp-bar h-2">
+              <div className="xp-bar-fill" style={{ width: `${(dayOfWeek / 7) * 100}%` }} />
+            </div>
           </div>
+
+          {/* Narrative OR encouragement */}
+          {narrative ? (
+            <div className="quest-scroll p-4">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Sparkles className="h-3.5 w-3.5 text-accent" />
+                <p className="text-[10px] font-bold uppercase tracking-wider text-accent">AI Narrative</p>
+                <span className="ml-auto text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {new Date(narrative.sentAt).toLocaleDateString()}
+                </span>
+              </div>
+              <p className="text-sm leading-relaxed text-foreground font-semibold whitespace-pre-wrap">
+                {narrative.content}
+              </p>
+            </div>
+          ) : (
+            <div className="quest-scroll p-4">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Sparkles className="h-3.5 w-3.5 text-accent" />
+                <p className="text-[10px] font-bold uppercase tracking-wider text-accent">
+                  {weekComplete ? "Generating report…" : "This week"}
+                </p>
+              </div>
+              <p className="text-sm leading-relaxed text-foreground font-semibold">
+                {encouragement}
+              </p>
+              {!weekComplete && (
+                <p className="text-xs text-muted-foreground mt-2 font-semibold">
+                  Full AI recap unlocks on day 7 — {checkInCount} check-ins so far.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Stats */}
           <div className="grid grid-cols-3 gap-2">
-            <Stat icon={<Trophy className="h-4 w-4" />} label="Completion" value="65%" tone="primary" />
-            <Stat icon={<Coins className="h-4 w-4" />} label="Earned" value="+820" tone="honey" />
-            <Stat icon={<Sparkles className="h-4 w-4" />} label="Built" value="2 new" tone="coral" />
+            <Stat icon={<Trophy className="h-4 w-4" />} label="Completion" value={`${completionPct}%`} tone="primary" />
+            <Stat icon={<Coins className="h-4 w-4" />} label="Check-ins" value={String(checkInCount)} tone="honey" />
+            <Stat icon={<Sparkles className="h-4 w-4" />} label="Built" value={`${buildingsCompleted} new`} tone="coral" />
           </div>
 
           {/* Contributions */}
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Contributions</p>
             <div className="space-y-2">
-              {agents.map((a) => (
-                <div key={a.id} className="bg-card border border-border rounded-xl p-2.5 flex items-center gap-3">
-                  <img src={a.img} className="h-9 w-9 rounded-xl object-cover" />
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-extrabold">{a.name}</span>
-                      <span className="text-xs font-black text-foreground">{Math.round((a.mood / total) * 100)}%</span>
+              {contributionRows.length === 0 && (
+                <p className="text-xs text-muted-foreground font-semibold">No check-ins yet this week.</p>
+              )}
+              {contributionRows.map((row) => (
+                <div key={row.id} className="bg-card border border-border rounded-xl p-2.5 flex items-center gap-3">
+                  {row.img ? (
+                    <img src={row.img} className="h-9 w-9 rounded-xl object-cover" />
+                  ) : (
+                    <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center text-xs font-black text-muted-foreground">
+                      {row.name.slice(0, 1).toUpperCase()}
                     </div>
-                    <div className="xp-bar h-2"><div className="xp-bar-fill" style={{ width: `${a.mood}%` }} /></div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-extrabold truncate">{row.name}</span>
+                      <span className="text-xs font-black text-foreground">{row.pct}%</span>
+                    </div>
+                    <div className="xp-bar h-2"><div className="xp-bar-fill" style={{ width: `${row.pct}%` }} /></div>
+                    {perUser.length > 0 && (
+                      <p className="text-[10px] font-semibold text-muted-foreground mt-1">
+                        {row.completed} done · {row.missed} missed
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
           </div>
+
+          {/* Debug day count */}
+          <p className="text-[10px] text-muted-foreground text-center pt-2">
+            Day {dayCount} of your island journey
+          </p>
         </div>
       </div>
     </div>

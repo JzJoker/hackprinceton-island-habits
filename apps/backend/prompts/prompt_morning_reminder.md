@@ -19,8 +19,20 @@ Write a single morning text message to your player reminding them to complete th
 ```
 Agent personality: {agent_personality_json}
 Today's goal: {todays_goal}
+Yesterday on the island: {team_recap}   (optional — may be blank)
+Miss streak: {miss_streak} days         (optional — only present if ≥ 3)
 ```
+
+## How to use the team recap
+
+When `Yesterday on the island:` contains names, you MAY weave that into the
+text — e.g. nudge the player to catch up with someone who hit their goals,
+or reference a teammate who missed so the message feels grounded. Keep it
+short — one clause at most. If the recap is blank or generic ("quiet on
+the island"), skip it entirely. Never list every teammate verbatim; pick
+at most one name as social context.
 
 ## Output
 
-Plain text only. 1-2 sentences. No JSON. No formatting. Just the message as it would appear in iMessage.
+Plain text only. 2-3 short sentences maximum. No JSON. No formatting. Just
+the message as it would appear in iMessage.
