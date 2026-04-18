@@ -50,7 +50,7 @@ export const Building3D = ({ building }: Props) => {
   });
 
   return (
-    <group ref={groupRef} position={[pos[0], 0, pos[1]]} rotation={[0, rot, 0]}>
+    <group ref={groupRef} position={[pos[0], 0.26, pos[1]]} rotation={[0, rot, 0]}>
       {type === "house" && <House smokeRef={smokeRef} flagRef={flagRef} />}
       {type === "garden" && <Garden />}
       {type === "library" && <Library />}

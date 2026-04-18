@@ -34,7 +34,7 @@ const WindSway = ({
 const PineTree = ({ pos, seed }: { pos: [number, number]; seed: number }) => {
   const tilt = (seed - 0.5) * 0.08;
   return (
-    <group position={[pos[0], 0, pos[1]]} rotation={[tilt, seed * Math.PI * 2, 0]}>
+    <group position={[pos[0], 0.26, pos[1]]} rotation={[tilt, seed * Math.PI * 2, 0]}>
       {/* Trunk — static */}
       <mesh position={[0, 0.22, 0]} castShadow>
         <cylinderGeometry args={[0.055, 0.08, 0.45, 6]} />
@@ -65,7 +65,7 @@ const PineTree = ({ pos, seed }: { pos: [number, number]; seed: number }) => {
 
 /* ── Oak tree — round, lush canopy ───────────────────── */
 const OakTree = ({ pos, seed }: { pos: [number, number]; seed: number }) => (
-  <group position={[pos[0], 0, pos[1]]} rotation={[0, seed * Math.PI * 2, 0]}>
+  <group position={[pos[0], 0.26, pos[1]]} rotation={[0, seed * Math.PI * 2, 0]}>
     <mesh position={[0, 0.28, 0]} castShadow>
       <cylinderGeometry args={[0.08, 0.11, 0.56, 6]} />
       <meshStandardMaterial color="#5A3820" roughness={0.9} />
@@ -98,7 +98,7 @@ const OakTree = ({ pos, seed }: { pos: [number, number]; seed: number }) => (
 
 /* ── Palm tree ───────────────────────────────────────── */
 const PalmTree = ({ pos, seed }: { pos: [number, number]; seed: number }) => (
-  <group position={[pos[0], 0, pos[1]]} rotation={[0, seed * Math.PI * 2, 0]}>
+  <group position={[pos[0], 0.26, pos[1]]} rotation={[0, seed * Math.PI * 2, 0]}>
     <mesh position={[0, 0.25, 0]} rotation={[0, 0, seed * 0.12]} castShadow>
       <cylinderGeometry args={[0.05, 0.08, 0.5, 6]} />
       <meshStandardMaterial color="#9B7850" roughness={0.85} />
@@ -148,7 +148,7 @@ export const Rock3D = ({ pos, variant }: { pos: [number, number]; variant: numbe
   const baseSize = 0.16 + variant * 0.06;
 
   return (
-    <group position={[pos[0], -0.02, pos[1]]} rotation={[seed * 0.3, seed * 2, seed * 0.2]}>
+    <group position={[pos[0], 0.24, pos[1]]} rotation={[seed * 0.3, seed * 2, seed * 0.2]}>
       <mesh castShadow>
         <dodecahedronGeometry args={[baseSize, 1]} />
         <meshStandardMaterial color={variant === 0 ? "#7A7B70" : "#8A8578"} roughness={0.92} flatShading />
@@ -184,7 +184,7 @@ export const Flower3D = ({ pos, variant }: { pos: [number, number]; variant: num
   const colors = ["#E58F7B", "#F2C46C", "#C9A0E0", "#FFB6C1", "#88CCDD", "#F4A8A8"];
   return (
     <WindSway pos={pos} intensity={1.4}>
-      <group position={[pos[0], 0, pos[1]]}>
+      <group position={[pos[0], 0.26, pos[1]]}>
         {[0, 1, 2, 3].map((i) => {
           const a = (i / 4) * Math.PI * 2 + variant * 0.5;
           const r = 0.05 + Math.random() * 0.06;
@@ -217,7 +217,7 @@ export const Flower3D = ({ pos, variant }: { pos: [number, number]; variant: num
 /* ── Grass tuft ──────────────────────────────────────── */
 export const GrassTuft = ({ pos }: { pos: [number, number] }) => (
   <WindSway pos={pos} intensity={1.8}>
-    <group position={[pos[0], 0.01, pos[1]]}>
+    <group position={[pos[0], 0.27, pos[1]]}>
       {[0, 1, 2, 3, 4].map((i) => {
         const a = i * 1.2 + Math.random();
         const lean = (Math.random() - 0.5) * 0.3;

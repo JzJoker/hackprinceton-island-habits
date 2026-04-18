@@ -6,7 +6,7 @@ import a4 from "@/assets/agent-4.png";
 import a5 from "@/assets/agent-5.png";
 
 export type AgentId = "kael" | "theo" | "mei" | "jordan" | "sofia";
-export type ScreenId = "island" | "build" | "chat" | "recap" | "history" | "checkin" | "expand" | null;
+export type ScreenId = "island" | "build" | "chat" | "recap" | "history" | "checkin" | "expand" | "party" | null;
 export type BuildingType = "house" | "garden" | "library" | "gym" | "lighthouse" | "fountain" | "bonfire" | "cabin" | "dock" | "shrine" | "windmill" | "treehouse";
 export type DistrictId = "main" | "forest" | "beach" | "hill";
 
@@ -99,10 +99,10 @@ export interface District {
 }
 
 export const DISTRICTS: District[] = [
-  { id: "main",   name: "Pine Hollow",     emoji: "🏝️", unlocked: true,  unlockCost: 0,    unlockLevel: 0,  center: [0, 0],     radius: 4.8, color: "#7AB85A", description: "Your starting island — grass and gentle hills." },
-  { id: "forest", name: "Whispering Wood", emoji: "🌲", unlocked: false, unlockCost: 600,  unlockLevel: 12, center: [-7.8, -1.5], radius: 3.4, color: "#3F7A3F", description: "Dense pines & moss. Unlocks forest cabins." },
-  { id: "beach",  name: "Coral Cove",      emoji: "🏖️", unlocked: false, unlockCost: 900,  unlockLevel: 14, center: [7.2, 2.0], radius: 3.6, color: "#EFD9A8", description: "Warm sand & shallow water. Unlocks docks & lighthouse." },
-  { id: "hill",   name: "Stoneview Peak",  emoji: "⛰️", unlocked: false, unlockCost: 1400, unlockLevel: 16, center: [1.5, 7.8],   radius: 3.2, color: "#9B8E7E", description: "Rocky highland with old shrines." },
+  { id: "main",   name: "Pine Hollow",     emoji: "🏝️", unlocked: true,  unlockCost: 0,    unlockLevel: 0,  center: [0, 0],        radius: 7.0, color: "#7AB85A", description: "Your starting island — grass and gentle hills." },
+  { id: "forest", name: "Whispering Wood", emoji: "🌲", unlocked: false, unlockCost: 600,  unlockLevel: 12, center: [-15.0, -2.5], radius: 5.0, color: "#3F7A3F", description: "Dense pines & moss. Unlocks forest cabins." },
+  { id: "beach",  name: "Coral Cove",      emoji: "🏖️", unlocked: false, unlockCost: 900,  unlockLevel: 14, center: [14.5, 3.0],   radius: 5.2, color: "#EFD9A8", description: "Warm sand & shallow water. Unlocks docks & lighthouse." },
+  { id: "hill",   name: "Stoneview Peak",  emoji: "⛰️", unlocked: false, unlockCost: 1400, unlockLevel: 16, center: [2.5, 15.5],   radius: 4.8, color: "#9B8E7E", description: "Rocky highland with old shrines." },
 ];
 
 export interface Goal { id: string; text: string; done: boolean; reward: number; photo?: boolean; }
@@ -136,6 +136,9 @@ interface GameState {
   unlockDistrict: (id: DistrictId) => boolean;
 
   completeGoal: (id: string) => void;
+  addGoal: (text: string, reward: number, photo?: boolean) => void;
+  editGoal: (id: string, text: string, reward: number, photo?: boolean) => void;
+  deleteGoal: (id: string) => void;
   pendingCheckIn: Goal | null;
   setPendingCheckIn: (g: Goal | null) => void;
   chats: Record<AgentId, ChatMsg[]>;
@@ -155,13 +158,7 @@ const initialAgents: Agent[] = [
   { id: "jordan", name: "Jordan", img: a4, skin: "#D9A878", shirt: "#F2C46C", pants: "#3A2A1A", hair: "#2A1810", hairStyle: "short", mood: 91, line: "On a roll!",        goal: "Sleep 8h", online: true,              home: [ 1.5, -2.0] },
 ];
 
-const initialBuildings: Building[] = [
-  { id: "b1", type: "house",    pos: [-2.0, -0.5], district: "main" },
-  { id: "b2", type: "house",    pos: [ 1.8,  1.4], district: "main", rot: 0.4 },
-  { id: "b3", type: "garden",   pos: [-0.7, -2.0], district: "main" },
-  { id: "b4", type: "fountain", pos: [ 0.0,  0.0], district: "main" },
-  { id: "b5", type: "bonfire",  pos: [ 2.2, -1.7], district: "main" },
-];
+const initialBuildings: Building[] = [];
 
 // Pre-seeded scenery for the main island & previewing districts
 const initialScenery: Scenery[] = [
@@ -329,6 +326,18 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     setPendingCheckIn(null);
   }, [goals, showToast]);
 
+  const addGoal = useCallback((text: string, reward: number, photo?: boolean) => {
+    setGoals((gs) => [...gs, { id: `g${Date.now()}`, text, done: false, reward, photo: photo ?? false }]);
+  }, []);
+
+  const editGoal = useCallback((id: string, text: string, reward: number, photo?: boolean) => {
+    setGoals((gs) => gs.map((g) => g.id === id ? { ...g, text, reward, photo: photo ?? g.photo } : g));
+  }, []);
+
+  const deleteGoal = useCallback((id: string) => {
+    setGoals((gs) => gs.filter((g) => g.id !== id));
+  }, []);
+
   const sendChat = useCallback((id: AgentId, text: string) => {
     const userMsg: ChatMsg = { from: "you", text, ts: Date.now() };
     setChats((c) => ({ ...c, [id]: [...c[id], userMsg] }));
@@ -347,7 +356,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       agents, buildings, scenery, districts, goals,
       placingType, setPlacingType, placeBuildingAt, cancelPlacing,
       unlockDistrict,
-      completeGoal, pendingCheckIn, setPendingCheckIn,
+      completeGoal, addGoal, editGoal, deleteGoal, pendingCheckIn, setPendingCheckIn,
       chats, sendChat,
       toast, showToast,
     }}>

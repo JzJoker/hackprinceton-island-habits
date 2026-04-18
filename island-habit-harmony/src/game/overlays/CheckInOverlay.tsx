@@ -1,18 +1,36 @@
 import { useState } from "react";
 import { X, Camera, Check, Coins, Sparkles } from "lucide-react";
 import { useGame } from "../state";
+import { useOverlayClose } from "@/hooks/useOverlayClose";
 
 export const CheckInOverlay = () => {
   const { screen, setScreen, goals, completeGoal, pendingCheckIn, setPendingCheckIn } = useGame();
+  const { closing, close } = useOverlayClose(() => {
+    setScreen(null);
+    setPendingCheckIn(null);
+    setPhotoTaken(false);
+  });
   const [photoTaken, setPhotoTaken] = useState(false);
 
-  if (screen !== "checkin") return null;
+  if (screen !== "checkin" && !closing) return null;
 
   const openGoals = goals.filter((g) => !g.done);
 
+  const handleClose = () => {
+    setPhotoTaken(false);
+    close();
+  };
+
   return (
-    <div className="absolute inset-0 z-50 flex items-end md:items-center justify-center p-4 md:p-8 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="hud-panel w-full max-w-md flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300">
+    <div
+      className={`absolute inset-0 z-50 flex items-end md:items-center justify-center p-4 md:p-8 pointer-events-auto
+        bg-black/50 backdrop-blur-sm
+        ${closing ? "animate-out fade-out duration-150" : "animate-in fade-in duration-200"}`}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) handleClose(); }}
+    >
+      <div className={`hud-panel w-full max-w-md flex flex-col overflow-hidden
+        ${closing ? "animate-out slide-out-to-bottom duration-150" : "animate-in slide-in-from-bottom duration-300"}`}>
+
         <header className="flex items-center justify-between p-4 border-b border-foreground/10">
           <div className="flex items-center gap-2">
             <div className="h-9 w-9 rounded-xl btn-game-coral flex items-center justify-center">
@@ -23,7 +41,7 @@ export const CheckInOverlay = () => {
               <p className="display-font text-base font-bold">{pendingCheckIn ? pendingCheckIn.text : "Mark a habit done"}</p>
             </div>
           </div>
-          <button onClick={() => { setScreen(null); setPendingCheckIn(null); setPhotoTaken(false); }} className="h-9 w-9 rounded-xl bg-muted hover:bg-muted-foreground/20 flex items-center justify-center transition">
+          <button onClick={handleClose} className="h-9 w-9 rounded-xl bg-muted hover:bg-muted-foreground/20 flex items-center justify-center transition">
             <X className="h-4 w-4" />
           </button>
         </header>
@@ -66,7 +84,7 @@ export const CheckInOverlay = () => {
               >
                 {photoTaken ? (
                   <div className="text-center">
-                    <div className="h-12 w-12 rounded-full bg-progress-gradient flex items-center justify-center mx-auto mb-2 animate-bob">
+                    <div className="h-12 w-12 rounded-full bg-progress-gradient flex items-center justify-center mx-auto mb-2">
                       <Check className="h-6 w-6 text-white" strokeWidth={3} />
                     </div>
                     <p className="text-sm font-bold text-primary-foreground">Photo captured!</p>

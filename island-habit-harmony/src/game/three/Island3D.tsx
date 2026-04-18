@@ -60,12 +60,12 @@ const Water = () => {
     <group>
       {/* Deep ocean floor */}
       <mesh position={[0, -2.8, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[45, 64]} />
+        <circleGeometry args={[80, 64]} />
         <meshStandardMaterial color="#152838" />
       </mesh>
       {/* Mid-depth water */}
       <mesh position={[0, -1.4, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[40, 64]} />
+        <circleGeometry args={[75, 64]} />
         <meshStandardMaterial color="#214860" transparent opacity={0.92} />
       </mesh>
       {/* Surface water — vertex-animated */}
@@ -75,6 +75,7 @@ const Water = () => {
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
         geometry={waveGeo}
+        scale={[1.9, 1.9, 1]}
       >
         <primitive object={waterMat} attach="material" />
       </mesh>
@@ -91,9 +92,9 @@ const Water = () => {
 const GrassDecor = () => {
   const tufts = useMemo(
     () =>
-      Array.from({ length: 45 }).map((_, i) => {
-        const a = (i / 45) * Math.PI * 2 + Math.random() * 0.5;
-        const r = 0.6 + Math.random() * 2.6;
+      Array.from({ length: 80 }).map((_, i) => {
+        const a = (i / 80) * Math.PI * 2 + Math.random() * 0.5;
+        const r = 0.6 + Math.random() * 5.5;
         return [Math.cos(a) * r, Math.sin(a) * r] as [number, number];
       }),
     [],
@@ -143,20 +144,23 @@ const Particles = () => {
   );
 };
 
-/* ── Agent waypoints ─────────────────────────────────── */
+/* ── Agent waypoints — spread across the larger main island ── */
 const WAYPOINTS: [number, number][] = [
-  [-2.0, -0.5],
-  [1.8, 1.4],
-  [-0.7, -2.0],
-  [0, 0],
-  [2.2, -1.7],
-  [-1.5, 1.8],
-  [1.0, -2.5],
-  [-2.5, 1.0],
-  [2.5, -0.2],
-  [0.5, 2.5],
-  [-1.2, -1.5],
-  [0.8, 0.8],
+  [-2.5,  1.2],
+  [ 2.0, -1.0],
+  [ 1.0,  3.0],
+  [-3.5, -2.5],
+  [ 4.0, -1.5],
+  [ 0.0, -2.5],
+  [-1.0, -1.5],
+  [ 5.0,  1.5],
+  [-5.0,  0.5],
+  [ 3.0,  4.0],
+  [-3.0,  3.5],
+  [ 1.0, -4.5],
+  [-4.5,  1.5],
+  [ 4.5, -3.5],
+  [ 0.0,  5.0],
 ];
 
 /* ── Main scene ──────────────────────────────────────── */
@@ -173,7 +177,7 @@ const Scene = () => {
         mieCoefficient={0.003}
         mieDirectionalG={0.92}
       />
-      <fog attach="fog" args={["#C8DFF0", 15, 35]} />
+      <fog attach="fog" args={["#C8DFF0", 28, 70]} />
       <Environment preset="park" environmentIntensity={0.4} />
 
       {/* Lighting — warm key, cool fill, rim */}
@@ -238,11 +242,12 @@ const Scene = () => {
           key={a.id}
           agent={a}
           waypoints={WAYPOINTS}
+          buildings={buildings}
+          scenery={scenery}
           isSelected={selectedAgent === a.id}
           onClick={() => {
             if (placingType) return;
             setSelectedAgent(a.id);
-            setScreen("chat");
           }}
         />
       ))}
@@ -258,7 +263,7 @@ export const Island3D = () => {
   return (
     <Canvas
       shadows
-      camera={{ position: [11, 9, 11], fov: 42, near: 0.5, far: 70 }}
+      camera={{ position: [16, 13, 16], fov: 45, near: 0.5, far: 120 }}
       gl={{
         antialias: true,
         toneMapping: THREE.ACESFilmicToneMapping,
@@ -270,8 +275,8 @@ export const Island3D = () => {
         <Scene />
         <OrbitControls
           enablePan={false}
-          minDistance={6}
-          maxDistance={22}
+          minDistance={4}
+          maxDistance={55}
           minPolarAngle={Math.PI / 6}
           maxPolarAngle={Math.PI / 2.3}
           target={[0, 0.5, 0]}

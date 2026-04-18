@@ -2,17 +2,23 @@ import { useRef, useMemo, useState } from "react";
 import { useFrame, ThreeEvent } from "@react-three/fiber";
 import { Html, Float } from "@react-three/drei";
 import * as THREE from "three";
-import type { Agent } from "../state";
+import type { Agent, Building, Scenery } from "../state";
+import { BUILD_LIBRARY } from "../state";
 
 interface Props {
   agent: Agent;
   waypoints: [number, number][];
+  buildings: Building[];
+  scenery: Scenery[];
   onClick: () => void;
   isSelected: boolean;
 }
 
+const AGENT_RADIUS = 0.32;
+const ISLAND_RADIUS = 6.6;
+
 /* ── Chibi-style cozy villager agent ──────────────────── */
-export const Agent3D = ({ agent, waypoints, onClick, isSelected }: Props) => {
+export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelected }: Props) => {
   const group = useRef<THREE.Group>(null);
   const bodyGroup = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Mesh>(null);
@@ -23,10 +29,19 @@ export const Agent3D = ({ agent, waypoints, onClick, isSelected }: Props) => {
 
   const seed = useMemo(() => Math.random(), []);
   const targetIdx = useRef(Math.floor(seed * waypoints.length));
-  const pos = useRef(new THREE.Vector3(agent.home[0], 0, agent.home[1]));
+  const GROUND_Y = 0.26;
+  const pos = useRef(new THREE.Vector3(agent.home[0], GROUND_Y, agent.home[1]));
   const angle = useRef(seed * Math.PI * 2);
   const idleTimer = useRef(0);
   const walkCycle = useRef(0);
+  const stuckTimer = useRef(0);
+  const lastPos = useRef(new THREE.Vector3());
+
+  // Keep fresh refs so useFrame closure always has latest obstacle data
+  const buildingsRef = useRef(buildings);
+  buildingsRef.current = buildings;
+  const sceneryRef = useRef(scenery);
+  sceneryRef.current = scenery;
 
   const speed = 0.35 + (agent.mood / 100) * 0.35;
 
@@ -34,7 +49,7 @@ export const Agent3D = ({ agent, waypoints, onClick, isSelected }: Props) => {
     if (!group.current) return;
     const target = waypoints[targetIdx.current];
     if (!target) return;
-    const tv = new THREE.Vector3(target[0], 0, target[1]);
+    const tv = new THREE.Vector3(target[0], GROUND_Y, target[1]);
     const dir = tv.clone().sub(pos.current);
     const distance = dir.length();
 
@@ -55,6 +70,59 @@ export const Agent3D = ({ agent, waypoints, onClick, isSelected }: Props) => {
       const diff = targetAngle - angle.current;
       const wrapped = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI;
       angle.current += wrapped * 0.12;
+    }
+
+    // ── Obstacle repulsion ──────────────────────────────
+    const repX = { v: 0 }, repZ = { v: 0 };
+    const dt = Math.min(delta, 0.05);
+
+    // Repel from buildings
+    for (const b of buildingsRef.current) {
+      const opt = BUILD_LIBRARY.find((x) => x.type === b.type);
+      const bR = (opt?.radius ?? 0.5) + AGENT_RADIUS;
+      const dx = pos.current.x - b.pos[0];
+      const dz = pos.current.z - b.pos[1];
+      const d = Math.hypot(dx, dz);
+      if (d < bR && d > 0.001) {
+        const str = ((bR - d) / bR) * 5;
+        repX.v += (dx / d) * str;
+        repZ.v += (dz / d) * str;
+      }
+    }
+
+    // Repel from trees & rocks
+    for (const s of sceneryRef.current) {
+      if (s.type === "flower") continue;
+      const sR = (s.type === "tree" ? 0.38 : 0.22) + AGENT_RADIUS;
+      const dx = pos.current.x - s.pos[0];
+      const dz = pos.current.z - s.pos[1];
+      const d = Math.hypot(dx, dz);
+      if (d < sR && d > 0.001) {
+        const str = ((sR - d) / sR) * 4;
+        repX.v += (dx / d) * str;
+        repZ.v += (dz / d) * str;
+      }
+    }
+
+    pos.current.x += repX.v * dt;
+    pos.current.z += repZ.v * dt;
+
+    // Clamp within island bounds
+    const distFromCenter = Math.hypot(pos.current.x, pos.current.z);
+    if (distFromCenter > ISLAND_RADIUS) {
+      pos.current.x = (pos.current.x / distFromCenter) * ISLAND_RADIUS;
+      pos.current.z = (pos.current.z / distFromCenter) * ISLAND_RADIUS;
+    }
+
+    // Stuck detection — pick a new waypoint if barely moving for 3 seconds
+    stuckTimer.current += delta;
+    if (stuckTimer.current > 3) {
+      const moved = pos.current.distanceTo(lastPos.current);
+      if (walking && moved < 0.02) {
+        targetIdx.current = Math.floor(Math.random() * waypoints.length);
+      }
+      lastPos.current.copy(pos.current);
+      stuckTimer.current = 0;
     }
 
     group.current.position.copy(pos.current);

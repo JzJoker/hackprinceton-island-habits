@@ -1,24 +1,34 @@
 import { X, Clock, Hammer, Heart, Coins, Flame } from "lucide-react";
 import { useGame } from "../state";
+import { useOverlayClose } from "@/hooks/useOverlayClose";
 
 const events = [
-  { t: "Today 09:12",  icon: <Heart className="h-3.5 w-3.5" />,  text: "Sofia completed Morning meditation",    coin: 20, tone: "primary" },
-  { t: "Today 08:30",  icon: <Hammer className="h-3.5 w-3.5" />, text: "Garden bloomed in season 3",            coin: 0,  tone: "honey" },
-  { t: "Yesterday",    icon: <Flame className="h-3.5 w-3.5" />,  text: "Jordan extended streak to 12 days",     coin: 30, tone: "coral" },
-  { t: "Yesterday",    icon: <Hammer className="h-3.5 w-3.5" />, text: "Group built Bonfire 🔥",                 coin: -60, tone: "honey" },
-  { t: "2 days ago",   icon: <Heart className="h-3.5 w-3.5" />,  text: "Kael completed Gym 45m",                coin: 25, tone: "primary" },
-  { t: "3 days ago",   icon: <Heart className="h-3.5 w-3.5" />,  text: "Theo missed Read 15p — island sighed",  coin: 0,  tone: "coral" },
+  { t: "Today 09:12",  icon: <Heart className="h-3.5 w-3.5" />,  text: "Sofia completed Morning meditation",    coin: 20,   tone: "primary" },
+  { t: "Today 08:30",  icon: <Hammer className="h-3.5 w-3.5" />, text: "Garden bloomed in season 3",            coin: 0,    tone: "honey" },
+  { t: "Yesterday",    icon: <Flame className="h-3.5 w-3.5" />,  text: "Jordan extended streak to 12 days",     coin: 30,   tone: "coral" },
+  { t: "Yesterday",    icon: <Hammer className="h-3.5 w-3.5" />, text: "Group built Bonfire 🔥",                 coin: -60,  tone: "honey" },
+  { t: "2 days ago",   icon: <Heart className="h-3.5 w-3.5" />,  text: "Kael completed Gym 45m",                coin: 25,   tone: "primary" },
+  { t: "3 days ago",   icon: <Heart className="h-3.5 w-3.5" />,  text: "Theo missed Read 15p — island sighed",  coin: 0,    tone: "coral" },
   { t: "4 days ago",   icon: <Hammer className="h-3.5 w-3.5" />, text: "Group built Fountain ⛲",                 coin: -160, tone: "honey" },
-  { t: "5 days ago",   icon: <Flame className="h-3.5 w-3.5" />,  text: "Pine Hollow reached Lv. 14",            coin: 0,  tone: "primary" },
+  { t: "5 days ago",   icon: <Flame className="h-3.5 w-3.5" />,  text: "Pine Hollow reached Lv. 14",            coin: 0,    tone: "primary" },
 ];
 
 export const HistoryOverlay = () => {
   const { screen, setScreen } = useGame();
-  if (screen !== "history") return null;
+  const { closing, close } = useOverlayClose(() => setScreen(null));
+
+  if (screen !== "history" && !closing) return null;
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center p-8 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="hud-panel max-w-xl w-full max-h-[85%] flex flex-col overflow-hidden">
+    <div
+      className={`absolute inset-0 z-50 flex items-center justify-center p-8 pointer-events-auto
+        bg-black/40 backdrop-blur-sm
+        ${closing ? "animate-out fade-out duration-150" : "animate-in fade-in duration-200"}`}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}
+    >
+      <div className={`hud-panel max-w-xl w-full max-h-[85%] flex flex-col overflow-hidden
+        ${closing ? "animate-out zoom-out-95 duration-150" : "animate-in zoom-in-95 duration-300"}`}>
+
         <header className="flex items-center justify-between p-4 border-b border-foreground/10">
           <div className="flex items-center gap-2">
             <div className="h-9 w-9 rounded-xl bg-lavender flex items-center justify-center">
@@ -29,7 +39,7 @@ export const HistoryOverlay = () => {
               <p className="display-font text-base font-bold">Timeline · 7 days</p>
             </div>
           </div>
-          <button onClick={() => setScreen(null)} className="h-9 w-9 rounded-xl bg-muted hover:bg-muted-foreground/20 flex items-center justify-center transition">
+          <button onClick={close} className="h-9 w-9 rounded-xl bg-muted hover:bg-muted-foreground/20 flex items-center justify-center transition">
             <X className="h-4 w-4" />
           </button>
         </header>

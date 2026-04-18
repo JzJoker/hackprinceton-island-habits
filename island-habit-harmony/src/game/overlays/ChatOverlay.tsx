@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { X, Send, Sparkles } from "lucide-react";
 import { useGame } from "../state";
+import { useOverlayClose } from "@/hooks/useOverlayClose";
 
 export const ChatOverlay = () => {
   const { screen, setScreen, agents, selectedAgent, setSelectedAgent, chats, sendChat } = useGame();
+  const { closing, close } = useOverlayClose(() => setScreen(null));
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -14,7 +16,7 @@ export const ChatOverlay = () => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, screen]);
 
-  if (screen !== "chat") return null;
+  if (screen !== "chat" && !closing) return null;
 
   const send = () => {
     if (!input.trim()) return;
@@ -23,8 +25,15 @@ export const ChatOverlay = () => {
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex items-stretch justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="hud-panel w-full max-w-md flex flex-col rounded-r-none animate-in slide-in-from-right duration-300">
+    <div
+      className={`absolute inset-0 z-50 flex items-stretch justify-end pointer-events-auto
+        ${closing ? "animate-out fade-out duration-150" : "animate-in fade-in duration-200"}
+        bg-black/40 backdrop-blur-sm`}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}
+    >
+      <div className={`hud-panel w-full max-w-md flex flex-col rounded-r-none
+        ${closing ? "animate-out slide-out-to-right duration-150" : "animate-in slide-in-from-right duration-300"}`}>
+
         <header className="p-4 border-b border-foreground/10 flex items-center gap-3">
           <img src={agent.img} alt={agent.name} className="h-12 w-12 rounded-2xl object-cover border-2 border-card shadow-soft" />
           <div className="flex-1">
@@ -38,7 +47,7 @@ export const ChatOverlay = () => {
               <span className="text-[10px] text-muted-foreground font-semibold">· {agent.goal}</span>
             </div>
           </div>
-          <button onClick={() => setScreen(null)} className="h-9 w-9 rounded-xl bg-muted hover:bg-muted-foreground/20 flex items-center justify-center transition">
+          <button onClick={close} className="h-9 w-9 rounded-xl bg-muted hover:bg-muted-foreground/20 flex items-center justify-center transition">
             <X className="h-4 w-4" />
           </button>
         </header>

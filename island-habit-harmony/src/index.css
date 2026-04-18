@@ -255,14 +255,9 @@
 
   /* Game window frame (browser-style chrome around the world) */
   .game-window {
-    border-radius: 24px;
+    border-radius: 0;
     overflow: hidden;
     background: hsl(215 30% 12%);
-    border: 1px solid hsl(215 25% 25%);
-    box-shadow:
-      0 50px 100px -30px hsl(215 60% 8% / 0.6),
-      0 20px 50px -15px hsl(215 50% 15% / 0.4),
-      inset 0 1px 0 hsl(0 0% 100% / 0.08);
   }
 
   .display-font { font-family: 'Fredoka', 'Nunito', sans-serif; letter-spacing: -0.01em; }
