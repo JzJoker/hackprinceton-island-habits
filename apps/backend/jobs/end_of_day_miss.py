@@ -54,14 +54,19 @@ def end_of_day_miss():
 
         # Broadcast low-motivation message if threshold just crossed
         if new_motivation < 30 and prev_motivation >= 30:
-            message = generate_low_motivation_message(agent["personalityProfile"], new_motivation)
+            message, reasoning = generate_low_motivation_message(agent["personalityProfile"], new_motivation)
             phones = db.query("jobQueries:getIslandPhoneNumbers", {"islandId": island["_id"]})
             send_group_message(phones, message)
+            
+            context = {"motivation": new_motivation}
+            if reasoning:
+                context["reasoning"] = reasoning
+                
             db.mutation("jobMutations:logAiMessage", {
                 "agentId": agent["_id"],
                 "channel": "imessage_group",
                 "content": message,
-                "context": {"motivation": new_motivation},
+                "context": context,
             })
 
         processed += 1

@@ -17,7 +17,9 @@ def agent_gossip():
         return jsonify({"error": "agent_a_personality is required"}), 400
 
     try:
-        result = _generate_agent_gossip(agent_a_personality, agent_b_personality, recent_events)
+        result, reasoning = _generate_agent_gossip(agent_a_personality, agent_b_personality, recent_events)
+        if reasoning:
+            result["_reasoning"] = reasoning
     except ValueError as e:
         return jsonify({"error": "K2 returned non-JSON", "raw": str(e)}), 502
 

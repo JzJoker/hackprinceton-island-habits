@@ -8,6 +8,7 @@ export const saveConversation = mutation({
     agentBPhone: v.string(),
     lines: v.array(v.object({ speaker: v.string(), text: v.string() })),
     timestamp: v.number(),
+    reasoning: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return ctx.db.insert("gossipConversations", args);

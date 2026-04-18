@@ -17,11 +17,14 @@ def ascension_finale():
         return jsonify({"error": "total_days, total_buildings, and total_goals are required"}), 400
 
     try:
-        narrative = _generate_ascension_finale(total_days, total_buildings, total_goals)
+        narrative, reasoning = _generate_ascension_finale(total_days, total_buildings, total_goals)
     except ValueError as e:
         return jsonify({"error": "K2 returned non-JSON", "raw": str(e)}), 502
 
     if island_phones:
         send_group_message(island_phones, narrative)
 
-    return jsonify({"narrative": narrative})
+    res = {"narrative": narrative}
+    if reasoning:
+        res["reasoning"] = reasoning
+    return jsonify(res)

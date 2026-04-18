@@ -441,7 +441,7 @@ type ActiveConv = {
   agentAPosCapture: THREE.Vector3;
   agentBPosCapture: THREE.Vector3;
 };
-type SaveConversationFn = (agentAPhone: string, agentBPhone: string, lines: ConvLine[]) => void;
+type SaveConversationFn = (agentAPhone: string, agentBPhone: string, lines: ConvLine[], reasoning?: string) => void;
 
 const Scene = ({
   agentTrackPos,
@@ -485,8 +485,9 @@ const Scene = ({
       }),
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { lines?: ConvLine[] } | null) => {
+      .then((data: { lines?: ConvLine[], _reasoning?: string } | null) => {
         const lines = data?.lines;
+        const reasoning = data?._reasoning;
         if (!lines?.length) { setActiveConv(null); return; }
 
         // Play lines sequentially
@@ -508,7 +509,7 @@ const Scene = ({
         setTimeout(() => {
           setGossipBubbles(new Map());
           setActiveConv(null);
-          saveConversation(agentA.id, agentB.id, lines);
+          saveConversation(agentA.id, agentB.id, lines, reasoning);
         }, totalMs + 500);
       })
       .catch(() => { setActiveConv(null); });
@@ -620,7 +621,7 @@ export const Island3D = () => {
   const islandId = game?.islandId ?? null;
   const saveConversationMut = useMutation(api.gossip.saveConversation);
   const saveConversation = useCallback<SaveConversationFn>(
-    (agentAPhone, agentBPhone, lines) => {
+    (agentAPhone, agentBPhone, lines, reasoning) => {
       if (!islandId) return;
       saveConversationMut({
         islandId: islandId as Id<"islands">,
@@ -628,6 +629,7 @@ export const Island3D = () => {
         agentBPhone,
         lines,
         timestamp: Date.now() + timeOffsetMs,
+        reasoning,
       }).catch(console.error);
     },
     [islandId, saveConversationMut, timeOffsetMs],

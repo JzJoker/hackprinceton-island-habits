@@ -392,20 +392,7 @@ const ReasoningModal = ({
             </p>
           </div>
 
-          {!agent ? (
-            <div style={{
-              textAlign: 'center', padding: '32px 20px',
-              border: '1.5px dashed #d9c8a8',
-              borderRadius: '14px',
-              background: '#fffdf5',
-            }}>
-              <div style={{ fontSize: '40px', marginBottom: '8px' }}>🪴</div>
-              <p style={{ ...fredoka(18), margin: 0, color: C.navy }}>Agent not spawned yet</p>
-              <p style={{ ...nunito(700, 13), color: C.textMuted, margin: '6px 0 0' }}>
-                A K2 personality spawns the first time this player adds a goal.
-              </p>
-            </div>
-          ) : messages.length === 0 ? (
+          {messages.length === 0 ? (
             <div style={{
               textAlign: 'center', padding: '32px 20px',
               border: '1.5px dashed #d9c8a8',
@@ -485,12 +472,263 @@ const ReasoningModal = ({
   )
 }
 
+/* ── Gossip logs modal ─────────────────────────────── */
+const GossipModal = ({
+  name, character, island, allCharacters, onClose,
+}: {
+  name: string
+  character: Character
+  island: IslandInfo
+  allCharacters: Character[]
+  onClose: () => void
+}) => {
+  const { member, agent } = character
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const gossips = useQuery(
+    api.gossip.getGossipHistory as any,
+    { islandId: island._id }
+  ) as any[] | undefined
+
+  const filteredGossips = useMemo(() => {
+    if (!gossips) return undefined
+    return gossips.filter(
+      (g) => g.agentAPhone === member.phoneNumber || g.agentBPhone === member.phoneNumber
+    )
+  }, [gossips, member.phoneNumber])
+
+  const resolveOtherName = (phone: string) => {
+    const cIdx = allCharacters.findIndex((c) => c.member.phoneNumber === phone)
+    if (cIdx === -1) return phone.slice(-4)
+    return resolveName(allCharacters[cIdx].member, cIdx)
+  }
+
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 50,
+        background: 'rgba(14,28,45,0.55)',
+        backdropFilter: 'blur(3px)',
+        display: 'grid', placeItems: 'center',
+        padding: '20px',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(720px, 94vw)',
+          maxHeight: '86vh',
+          display: 'flex', flexDirection: 'column',
+          background: 'linear-gradient(180deg, #fffdf8 0%, #f5ecd8 100%)',
+          border: `2px solid ${C.cardBorder}`,
+          borderRadius: '22px',
+          boxShadow: '0 30px 60px -24px rgba(14,28,45,0.6)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: '10px',
+          padding: '14px 18px',
+          background: `linear-gradient(160deg, ${C.navy} 0%, ${C.navy2} 100%)`,
+          color: '#f6fbff',
+        }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', minWidth: 0 }}>
+            <ChibiAvatar phone={member.phoneNumber} size={48} />
+            <div style={{ minWidth: 0 }}>
+              <p style={{ ...nunito(800, 10), color: '#a8bfd6', margin: 0, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                Gossip logs
+              </p>
+              <p style={{ ...fredoka(22), margin: '2px 0 0', color: '#f6fbff', lineHeight: 1.1 }}>
+                {name}
+              </p>
+              <p style={{ ...nunito(700, 12), color: '#c5d9ea', margin: '2px 0 0' }}>
+                {island.name} · {prettyAddress(member.phoneNumber)}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              background: 'rgba(255,255,255,0.14)',
+              border: '2px solid rgba(255,255,255,0.25)',
+              color: '#f6fbff',
+              borderRadius: '12px',
+              width: '36px', height: '36px',
+              cursor: 'pointer',
+              ...nunito(900, 16),
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ overflow: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Scaffolded explainer */}
+          <div style={{
+            background: '#fffaf0',
+            border: `1.5px solid ${C.cardBorder}`,
+            borderRadius: '14px',
+            padding: '12px 14px',
+          }}>
+            <p style={{ ...nunito(900, 10), color: C.textLabel, textTransform: 'uppercase', letterSpacing: '0.09em', margin: 0 }}>
+              How this view works
+            </p>
+            <p style={{ ...nunito(700, 13), color: C.text, margin: '4px 0 0', lineHeight: 1.45 }}>
+              Agents naturally gossip when they cross paths on the island. This log tracks every conversation
+              where {name} was a participant.
+            </p>
+          </div>
+
+          {filteredGossips === undefined ? (
+            <div style={{
+              textAlign: 'center', padding: '32px 20px',
+              border: '1.5px dashed #d9c8a8',
+              borderRadius: '14px',
+              background: '#fffdf5',
+            }}>
+              <p style={{ ...fredoka(18), margin: 0, color: C.navy }}>Loading gossip...</p>
+            </div>
+          ) : filteredGossips.length === 0 ? (
+            <div style={{
+              textAlign: 'center', padding: '32px 20px',
+              border: '1.5px dashed #d9c8a8',
+              borderRadius: '14px',
+              background: '#fffdf5',
+            }}>
+              <div style={{ fontSize: '40px', marginBottom: '8px' }}>💬</div>
+              <p style={{ ...fredoka(18), margin: 0, color: C.navy }}>No gossip yet</p>
+              <p style={{ ...nunito(700, 13), color: C.textMuted, margin: '6px 0 0' }}>
+                {name} hasn't had any conversations with other agents yet.
+              </p>
+            </div>
+          ) : (
+            filteredGossips.map((g) => {
+              const nameA = resolveOtherName(g.agentAPhone)
+              const nameB = resolveOtherName(g.agentBPhone)
+              return (
+                <div key={g._id} style={{
+                  background: '#fff',
+                  border: `1.5px solid #e6d8bb`,
+                  borderRadius: '14px',
+                  padding: '12px 14px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{
+                      ...nunito(900, 10),
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.09em',
+                      color: '#8a6a33',
+                    }}>
+                      With {g.agentAPhone === member.phoneNumber ? nameB : nameA}
+                    </span>
+                    <span style={{ ...nunito(700, 11), color: C.textMuted }}>{formatWhen(g.timestamp)}</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {g.lines.map((line: any, i: number) => {
+                      const isA = line.speaker === "a"
+                      const isMe = (isA && g.agentAPhone === member.phoneNumber) || (!isA && g.agentBPhone === member.phoneNumber)
+                      const speakerName = isA ? nameA : nameB
+                      return (
+                        <div key={i} style={{
+                          display: 'flex', 
+                          gap: '8px', 
+                          flexDirection: isMe ? 'row-reverse' : 'row',
+                        }}>
+                          <div style={{
+                            width: '20px', height: '20px', 
+                            borderRadius: '50%', 
+                            background: isMe ? C.navy : '#eaf2fa', 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            flexShrink: 0,
+                            marginTop: '2px',
+                          }}>
+                            <span style={{ ...nunito(900, 9), color: isMe ? '#fff' : C.navy }}>
+                              {speakerName[0]}
+                            </span>
+                          </div>
+                          <div style={{
+                            maxWidth: '85%',
+                            background: isMe ? C.cream : '#f6fbff',
+                            border: `1px solid ${isMe ? '#ecdcc0' : '#d4e5ef'}`,
+                            padding: '6px 10px',
+                            borderRadius: '12px',
+                            borderTopRightRadius: isMe ? '2px' : '12px',
+                            borderTopLeftRadius: isMe ? '12px' : '2px',
+                            ...nunito(700, 12),
+                            color: C.text,
+                            lineHeight: 1.4,
+                          }}>
+                            <span style={{ ...nunito(900, 12), marginRight: '4px' }}>{speakerName}:</span>
+                            {line.text}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {g.reasoning && (
+                    <>
+                      <button
+                        onClick={() => setExpanded(expanded === g._id ? null : g._id)}
+                        style={{
+                          ...nunito(800, 11),
+                          color: C.navy,
+                          background: 'transparent',
+                          border: 'none',
+                          padding: '6px 0 0',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          textUnderlineOffset: '2px',
+                        }}
+                      >
+                        {expanded === g._id ? 'Hide reasoning context' : 'Show reasoning context'}
+                      </button>
+                      {expanded === g._id && (
+                        <pre style={{
+                          ...nunito(600, 11),
+                          color: '#3a4a63',
+                          background: '#f6f0e1',
+                          border: '1px solid #e4d5b3',
+                          borderRadius: '10px',
+                          padding: '8px 10px',
+                          margin: '6px 0 0',
+                          maxHeight: '200px',
+                          overflow: 'auto',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                        }}>
+                          {g.reasoning}
+                        </pre>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── Per-character card ───────────────────────────────── */
-const CharacterCard = ({ island, character, index }: { island: IslandInfo; character: Character; index: number }) => {
+const CharacterCard = ({ island, character, index, allCharacters }: { island: IslandInfo; character: Character; index: number; allCharacters: Character[] }) => {
   const { member, agent, messages } = character
   const tone = agent ? motivationTone(agent.motivation) : motivationTone(0)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [showReasoning, setShowReasoning] = useState(false)
+  const [showGossip, setShowGossip] = useState(false)
   const spawned = agent !== null
   const name = resolveName(member, index)
 
@@ -593,7 +831,6 @@ const CharacterCard = ({ island, character, index }: { island: IslandInfo; chara
             borderRadius: '14px',
             alignItems: 'center',
           }}>
-            {swatch(t.skin, 'skin')}
             {swatch(t.hair, `hair · ${t.hairStyle}`)}
             {swatch(t.shirt, 'shirt')}
             {swatch(t.pants, 'pants')}
@@ -601,64 +838,48 @@ const CharacterCard = ({ island, character, index }: { island: IslandInfo; chara
         )
       })()}
 
-      {!spawned ? (
-        <div style={{
-          background: '#fffdf5',
-          border: '1.5px dashed #d9c8a8',
-          borderRadius: '14px',
-          padding: '12px 14px',
-        }}>
-          <p style={{ ...nunito(900, 11), color: C.navy, margin: 0 }}>
-            Agent not spawned yet
-          </p>
-          <p style={{ ...nunito(700, 12), color: C.textMuted, margin: '4px 0 0', lineHeight: 1.4 }}>
-            A K2 personality spawns the first time this player adds a goal via iMessage or the island page.
-          </p>
+      {/* Motivation meter */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+          <span style={{ ...nunito(800, 11), color: C.textLabel, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Motivation
+          </span>
+          <span style={{ ...nunito(900, 12), color: C.navy }}>{agent?.motivation ?? 0}/100</span>
         </div>
-      ) : (
-        <>
-          {/* Motivation meter */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-              <span style={{ ...nunito(800, 11), color: C.textLabel, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Motivation
-              </span>
-              <span style={{ ...nunito(900, 12), color: C.navy }}>{agent!.motivation}/100</span>
-            </div>
-            <div style={{
-              height: '10px',
-              borderRadius: '999px',
-              background: '#eaf2fa',
-              border: '1px solid #d6e5f2',
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                width: `${Math.max(0, Math.min(100, agent!.motivation))}%`,
-                height: '100%',
-                background: `linear-gradient(90deg, ${tone.color} 0%, ${tone.color}cc 100%)`,
-                transition: 'width 0.3s ease',
-              }} />
-            </div>
-          </div>
+        <div style={{
+          height: '10px',
+          borderRadius: '999px',
+          background: '#eaf2fa',
+          border: '1px solid #d6e5f2',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            width: `${Math.max(0, Math.min(100, agent?.motivation ?? 0))}%`,
+            height: '100%',
+            background: `linear-gradient(90deg, ${tone.color} 0%, ${tone.color}cc 100%)`,
+            transition: 'width 0.3s ease',
+          }} />
+        </div>
+      </div>
 
-          {/* Personality */}
-          <div>
-            <p style={{ ...nunito(900, 10), color: C.textLabel, textTransform: 'uppercase', letterSpacing: '0.09em', margin: '0 0 4px' }}>
-              Personality
-            </p>
-            <p style={{
-              ...nunito(700, 13),
-              color: C.text,
-              margin: 0,
-              lineHeight: 1.45,
-              background: '#fffaf0',
-              border: '1.5px solid #ecdcc0',
-              borderRadius: '14px',
-              padding: '10px 12px',
-            }}>
-              {agent!.personalityProfile || '— no personality generated yet —'}
-            </p>
-          </div>
+      {/* Personality */}
+      <div>
+        <p style={{ ...nunito(900, 10), color: C.textLabel, textTransform: 'uppercase', letterSpacing: '0.09em', margin: '0 0 4px' }}>
+          Personality
+        </p>
+        <p style={{
+          ...nunito(700, 13),
+          color: C.text,
+          margin: 0,
+          lineHeight: 1.45,
+          background: '#fffaf0',
+          border: '1.5px solid #ecdcc0',
+          borderRadius: '14px',
+          padding: '10px 12px',
+        }}>
+          {agent?.personalityProfile || '— no personality generated yet —'}
+        </p>
+      </div>
 
       {/* Recent reasoning / messages */}
       <div>
@@ -755,32 +976,56 @@ const CharacterCard = ({ island, character, index }: { island: IslandInfo; chara
           </div>
         )}
 
-            <button
-              onClick={() => setShowReasoning(true)}
-              style={{
-                ...nunito(900, 12),
-                color: C.navy,
-                background: '#ffffff',
-                border: '2px solid #d4e5ef',
-                borderRadius: '12px',
-                padding: '8px 12px',
-                marginTop: '10px',
-                cursor: 'pointer',
-                alignSelf: 'flex-start',
-                boxShadow: '0 6px 12px -10px rgba(29,52,81,0.42)',
-              }}
-            >
-              🧠 View reasoning logs
-            </button>
-          </div>
-        </>
-      )}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+          <button
+            onClick={() => setShowReasoning(true)}
+            style={{
+              ...nunito(900, 12),
+              color: C.navy,
+              background: '#ffffff',
+              border: '2px solid #d4e5ef',
+              borderRadius: '12px',
+              padding: '8px 12px',
+              cursor: 'pointer',
+              alignSelf: 'flex-start',
+              boxShadow: '0 6px 12px -10px rgba(29,52,81,0.42)',
+            }}
+          >
+            🧠 View reasoning logs
+          </button>
+          <button
+            onClick={() => setShowGossip(true)}
+            style={{
+              ...nunito(900, 12),
+              color: C.navy,
+              background: '#ffffff',
+              border: '2px solid #d4e5ef',
+              borderRadius: '12px',
+              padding: '8px 12px',
+              cursor: 'pointer',
+              alignSelf: 'flex-start',
+              boxShadow: '0 6px 12px -10px rgba(29,52,81,0.42)',
+            }}
+          >
+            💬 View gossip logs
+          </button>
+        </div>
+      </div>
       {showReasoning && (
         <ReasoningModal
           name={name}
           character={character}
           island={island}
           onClose={() => setShowReasoning(false)}
+        />
+      )}
+      {showGossip && (
+        <GossipModal
+          name={name}
+          character={character}
+          island={island}
+          allCharacters={allCharacters}
+          onClose={() => setShowGossip(false)}
         />
       )}
     </div>
@@ -1012,7 +1257,7 @@ export function AgentsPage() {
                   gap: '14px',
                 }}>
                   {b.characters.map((c, idx) => (
-                    <CharacterCard key={c.member._id} island={b.island} character={c} index={idx} />
+                    <CharacterCard key={c.member._id} island={b.island} character={c} index={idx} allCharacters={b.characters} />
                   ))}
                 </div>
               </section>

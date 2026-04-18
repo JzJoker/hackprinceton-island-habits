@@ -16,7 +16,7 @@ def _load(name: str) -> str:
     return (PROMPTS_DIR / name).read_text()
 
 
-def call_k2(system: str, user: str, max_tokens: int = 200) -> str:
+def call_k2(system: str, user: str, max_tokens: int = 200) -> tuple[str, str | None]:
     r = requests.post(
         K2_API_URL,
         headers={"Authorization": f"Bearer {K2_API_KEY}", "Content-Type": "application/json"},
@@ -32,30 +32,36 @@ def call_k2(system: str, user: str, max_tokens: int = 200) -> str:
     )
     r.raise_for_status()
     content = r.json()["choices"][0]["message"]["content"]
-    # K2-Think emits reasoning before the answer. The API sometimes strips the
-    # opening <think> tag, leaving orphaned reasoning + </think>. Handle both forms.
+    reasoning = None
+
     if "</think>" in content:
-        content = content[content.rfind("</think>") + len("</think>"):].strip()
-    else:
-        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
-    return content
+        parts = content.split("</think>", 1)
+        reasoning_raw = parts[0]
+        content = parts[1].strip()
+        if "<think>" in reasoning_raw:
+            reasoning_raw = reasoning_raw.split("<think>", 1)[1]
+        reasoning = reasoning_raw.strip()
+    elif "<think>" in content:
+        parts = content.split("<think>", 1)
+        reasoning = parts[1].strip()
+        content = parts[0].strip()
+
+    return content, reasoning
 
 
-def call_k2_json(system: str, user: str, max_tokens: int = 200) -> dict:
-    raw = call_k2(system, user, max_tokens)
-    # Strip <think>...</think> reasoning blocks emitted by K2-Think
-    raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+def call_k2_json(system: str, user: str, max_tokens: int = 200) -> tuple[dict, str | None]:
+    raw, reasoning = call_k2(system, user, max_tokens)
     # Strip markdown code fences
     raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
     # Try parsing the full string first (handles nested structures like {"lines": [...]})
     try:
-        return json.loads(raw)
+        return json.loads(raw), reasoning
     except json.JSONDecodeError:
         pass
     # Fall back: try each flat {...} block from last to first
     for m in reversed(list(re.finditer(r"\{[^{}]+\}", raw, re.DOTALL))):
         try:
-            return json.loads(m.group(0))
+            return json.loads(m.group(0)), reasoning
         except json.JSONDecodeError:
             continue
     raise ValueError(f"K2 returned non-JSON: {raw}")
@@ -63,7 +69,7 @@ def call_k2_json(system: str, user: str, max_tokens: int = 200) -> dict:
 
 # ── Named helpers ─────────────────────────────────────────────────────────────
 
-def generate_morning_reminder(personality: dict, goal_texts: list, miss_streak: int) -> str:
+def generate_morning_reminder(personality: dict, goal_texts: list, miss_streak: int) -> tuple[str, str | None]:
     streak_note = f"Miss streak: {miss_streak} days." if miss_streak >= 3 else ""
     user = (
         f"Agent personality: {json.dumps(personality)}\n"
@@ -88,7 +94,7 @@ def generate_weekly_summary(
     return call_k2(_load("prompt_weekly_summary.md"), user, max_tokens=250)
 
 
-def generate_low_motivation_message(personality: dict, motivation: int) -> str:
+def generate_low_motivation_message(personality: dict, motivation: int) -> tuple[str, str | None]:
     user = (
         f"Failing players: [player]\n"
         f"Missed goals: multiple goals\n"
@@ -111,12 +117,12 @@ def generate_personality(
     return call_k2_json(_load("prompt_personality_generator.md"), user, max_tokens=200)
 
 
-def roast_goal(player_name: str, proposed_goal: str) -> str:
+def roast_goal(player_name: str, proposed_goal: str) -> tuple[str, str | None]:
     user = f"Player name: {player_name}\nProposed goal: {proposed_goal}"
     return call_k2(_load("prompt_goal_roaster.md"), user, max_tokens=120)
 
 
-def generate_agent_gossip(agent_a_personality: dict, agent_b_personality: dict, recent_events: list) -> dict:
+def generate_agent_gossip(agent_a_personality: dict, agent_b_personality: dict, recent_events: list) -> tuple[dict, str | None]:
     user = (
         f"Agent A personality: {json.dumps(agent_a_personality)}\n"
         f"Agent B personality: {json.dumps(agent_b_personality)}\n"
@@ -125,7 +131,7 @@ def generate_agent_gossip(agent_a_personality: dict, agent_b_personality: dict, 
     return call_k2_json(_load("prompt_agent_gossip.md"), user, max_tokens=400)
 
 
-def generate_reward_item(completed_goal: str, agent_personality: dict) -> dict:
+def generate_reward_item(completed_goal: str, agent_personality: dict) -> tuple[dict, str | None]:
     user = (
         f"Completed goal: {completed_goal}\n"
         f"Agent personality: {json.dumps(agent_personality)}"

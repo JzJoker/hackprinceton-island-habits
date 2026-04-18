@@ -42,16 +42,21 @@ def morning_reminder():
 
         if variants and miss_streak < 3:
             message = random.choice(variants)
+            reasoning = None
         else:
-            message = generate_morning_reminder(agent["personalityProfile"], goal_texts, miss_streak)
+            message, reasoning = generate_morning_reminder(agent["personalityProfile"], goal_texts, miss_streak)
 
         send_message(phone_number, message)
+
+        context = {"date": today, "missStreak": miss_streak}
+        if reasoning:
+            context["reasoning"] = reasoning
 
         db.mutation("jobMutations:logAiMessage", {
             "agentId": agent["_id"],
             "channel": "imessage_personal",
             "content": message,
-            "context": {"date": today, "missStreak": miss_streak},
+            "context": context,
         })
         sent += 1
 

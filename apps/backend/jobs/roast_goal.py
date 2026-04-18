@@ -13,5 +13,8 @@ def roast_goal():
     if not player_name or not proposed_goal:
         return jsonify({"error": "player_name and proposed_goal are required"}), 400
 
-    message = _roast_goal(player_name, proposed_goal)
-    return jsonify({"message": message})
+    message, reasoning = _roast_goal(player_name, proposed_goal)
+    res = {"message": message}
+    if reasoning:
+        res["reasoning"] = reasoning
+    return jsonify(res)

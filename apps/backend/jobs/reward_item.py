@@ -14,7 +14,9 @@ def reward_item():
         return jsonify({"error": "completed_goal and agent_personality are required"}), 400
 
     try:
-        result = _generate_reward_item(completed_goal, agent_personality)
+        result, reasoning = _generate_reward_item(completed_goal, agent_personality)
+        if reasoning:
+            result["_reasoning"] = reasoning
     except ValueError as e:
         return jsonify({"error": "K2 returned non-JSON", "raw": str(e)}), 502
 

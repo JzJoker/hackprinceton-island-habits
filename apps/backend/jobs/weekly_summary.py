@@ -22,12 +22,14 @@ def weekly_summary():
             continue
 
         stats = _aggregate_stats(events, island)
-        narrative = generate_weekly_summary(
+        narrative, reasoning = generate_weekly_summary(
             stats["total_checkins"],
             stats["total_misses"],
             stats["builds_completed"],
             stats["top_completer"] or "nobody",
         )
+        if reasoning:
+            stats["reasoning"] = reasoning
 
         send_group_message(phones, narrative)
 

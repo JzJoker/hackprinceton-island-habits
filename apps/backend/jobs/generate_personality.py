@@ -15,7 +15,9 @@ def generate_personality():
         return jsonify({"error": "player_name, approved_goals, and random_seed_trait are required"}), 400
 
     try:
-        result = _generate_personality(player_name, approved_goals, random_seed_trait)
+        result, reasoning = _generate_personality(player_name, approved_goals, random_seed_trait)
+        if reasoning:
+            result["_reasoning"] = reasoning
     except ValueError as e:
         return jsonify({"error": "K2 returned non-JSON", "raw": str(e)}), 502
 
