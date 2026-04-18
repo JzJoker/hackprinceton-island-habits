@@ -4,8 +4,17 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useConvex, useMutation } from 'convex/react'
 import type { Id } from '../../convex/_generated/dataModel'
 import { api } from '../../convex/_generated/api'
+import KnotapiJS from 'knotapi-js'
 
 type Step = 'code' | 'phoneSelect' | 'goals' | 'complete'
+type SessionResponse = { session: string }
+
+const AMAZON_MERCHANT_ID = 44
+const KnotCtor =
+  (KnotapiJS as { default?: new () => { open: (options: unknown) => void } })
+    .default ??
+  (KnotapiJS as unknown as new () => { open: (options: unknown) => void })
+const knotapi = new KnotCtor()
 
 export function OnboardingPage() {
   const [searchParams] = useSearchParams()
@@ -26,6 +35,8 @@ export function OnboardingPage() {
   const [currentIslandId, setCurrentIslandId] = useState<Id<'islands'> | null>(
     null,
   )
+  const [connectingMerchants, setConnectingMerchants] = useState(false)
+  const [merchantConnected, setMerchantConnected] = useState(false)
 
   const handleCodeSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -127,6 +138,54 @@ export function OnboardingPage() {
       setError(err instanceof Error ? err.message : 'Failed to save goals')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleConnectMerchants = async () => {
+    const backendBaseUrl = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:5001'
+    const knotClientId = import.meta.env.VITE_KNOT_CLIENT_ID ?? ''
+    const knotEnvironment =
+      (import.meta.env.VITE_KNOT_ENVIRONMENT as 'development' | 'production') ??
+      'production'
+
+    setError(null)
+    setConnectingMerchants(true)
+    try {
+      if (!knotClientId) {
+        throw new Error('Missing VITE_KNOT_CLIENT_ID in frontend env.')
+      }
+
+      const response = await fetch(`${backendBaseUrl}/api/knot/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+      const data = (await response.json()) as SessionResponse
+
+      knotapi.open({
+        sessionId: data.session,
+        clientId: knotClientId,
+        environment: knotEnvironment,
+        entryPoint: 'onboarding',
+        customerName: 'aman',
+        merchantIds: [AMAZON_MERCHANT_ID],
+        onSuccess: (details: unknown) => {
+          setMerchantConnected(true)
+          console.log('onSuccess', details)
+        },
+        onError: (knotError: unknown) => {
+          console.log('onError', knotError)
+        },
+        onExit: () => {
+          console.log('onExit')
+        },
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to connect merchants.')
+    } finally {
+      setConnectingMerchants(false)
     }
   }
 
@@ -254,6 +313,17 @@ export function OnboardingPage() {
                 Your character has been created and is ready to explore the island.
               </p>
             </div>
+            <button
+              onClick={handleConnectMerchants}
+              disabled={connectingMerchants}
+              className="w-full rounded-lg border border-cyan-400 bg-slate-950 px-4 py-2 font-semibold text-cyan-300 transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {connectingMerchants ? 'Connecting...' : 'Connect Merchants'}
+            </button>
+            {merchantConnected && (
+              <p className="text-sm text-emerald-300">Merchant connected successfully.</p>
+            )}
+            {error && <p className="text-sm text-rose-300">{error}</p>}
             <button
               onClick={() =>
                 navigate(

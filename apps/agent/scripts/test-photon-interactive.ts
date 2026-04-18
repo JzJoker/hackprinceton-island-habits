@@ -13,12 +13,14 @@
  */
 
 import { createClient, type AdvancedIMessage } from "@photon-ai/advanced-imessage";
+import { ConvexHttpClient } from "convex/browser";
 import { cloud, Spectrum, text } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import "dotenv/config";
 
 const PROJECT_ID = process.env.projid!;
 const PROJECT_SECRET = process.env.secret!;
+const CONVEX_URL = process.env.CONVEX_URL ?? process.env.VITE_CONVEX_URL;
 
 async function getRawClient(): Promise<AdvancedIMessage> {
   const tokenData = await cloud.issueImessageTokens(PROJECT_ID, PROJECT_SECRET);
@@ -151,7 +153,44 @@ async function listenForMessages() {
 
       const reply = content.text.toLowerCase();
 
-      if (reply === "done" || reply === "completed") {
+      if (reply.trim() === "/start") {
+        if (!CONVEX_URL) {
+          await space.send(text("Missing CONVEX_URL in agent env. I can't create a room code yet."));
+          console.log("  -> Missing CONVEX_URL\n");
+          continue;
+        }
+
+        try {
+          const convex = new ConvexHttpClient(CONVEX_URL);
+          const anySpace = space as any;
+          const participants = [
+            ...(Array.isArray(anySpace.participants)
+              ? anySpace.participants.map((p: any) => p?.id).filter(Boolean)
+              : []),
+            ...(Array.isArray(anySpace.members)
+              ? anySpace.members.map((m: any) => m?.id).filter(Boolean)
+              : []),
+            message.sender.id,
+          ];
+          const phoneNumbers = Array.from(new Set(participants));
+
+          const result = await (convex as any).mutation("islands:createIsland", {
+            phoneNumbers,
+          });
+          const code = result.code as string;
+          const gameLink = `http://localhost:5173/onboarding?code=${code}`;
+
+          await space.send(
+            text(
+              `Island Habits started.\n\nRoom Code: ${code}\nJoin: ${gameLink}`
+            )
+          );
+          console.log(`  -> Created island code ${code}\n`);
+        } catch (err: any) {
+          await space.send(text("Failed to create room code. Try /start again."));
+          console.log(`  -> /start error: ${err?.message ?? String(err)}\n`);
+        }
+      } else if (reply === "done" || reply === "completed") {
         await message.react(imessage.tapbacks.love);
         await space.send(text("Great job! Your goal has been marked as complete for today."));
         console.log("  -> Reacted + confirmed completion\n");
