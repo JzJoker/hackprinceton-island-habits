@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useConvex, useMutation, useQuery } from 'convex/react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useUser } from '@clerk/clerk-react'
 import type { Id } from '../../convex/_generated/dataModel'
 import { api } from '../../convex/_generated/api'
 import { usePhoneNumber } from '../hooks/usePhoneNumber'
@@ -22,8 +23,26 @@ export function DashboardPage() {
   const [joinError, setJoinError] = useState<string | null>(null)
   const [showJoinDialog, setShowJoinDialog] = useState(false)
 
+  const { user } = useUser()
   const convex = useConvex()
-  const islands = useQuery(api.islands.getIslandsByPhone, phone ? { phoneNumber: phone } : 'skip')
+  const userEmail = (user?.unsafeMetadata?.icloudEmail as string) ?? null
+
+  const islandsByPhone = useQuery(
+    api.islands.getIslandsByPhone,
+    phone ? { phoneNumber: phone } : 'skip'
+  )
+  const islandsByEmail = useQuery(
+    api.islands.getIslandsByPhone,
+    userEmail ? { phoneNumber: userEmail } : 'skip'
+  )
+
+  // Combine results from both queries, removing duplicates
+  const islands = Array.from(
+    new Map(
+      [...(islandsByPhone ?? []), ...(islandsByEmail ?? [])]
+        .map((island) => [island._id, island])
+    ).values()
+  )
   const islandDetails = useQuery(
     api.islands.getIslandDetails,
     islandId ? { islandId } : 'skip',
