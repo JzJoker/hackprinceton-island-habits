@@ -1,0 +1,11 @@
+{
+  "name": "@hackprinceton/shared",
+  "private": true,
+  "version": "0.1.0",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "echo \"shared build placeholder\"",
+    "lint": "echo \"shared lint placeholder\"",
+    "test": "echo \"shared test placeholder\""
+  }
+}
