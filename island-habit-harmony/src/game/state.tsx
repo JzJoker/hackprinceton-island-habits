@@ -172,6 +172,10 @@ interface GameState {
   sendChat: (id: AgentId, text: string) => void;
   toast: string | null;
   showToast: (msg: string) => void;
+
+  // Dev controls (desktop only)
+  devNextDay: () => void;
+  devLevelUp: () => void;
 }
 
 const Ctx = createContext<GameState | null>(null);
@@ -207,7 +211,7 @@ const initialScenery: Scenery[] = [
 ];
 
 const initialGoals: Goal[] = [
-  { id: "g1", text: "Morning meditation",  done: true,  reward: 20 },
+  { id: "g1", text: "Morning meditation",  done: false, reward: 20 },
   { id: "g2", text: "Drink 2L of water",   done: false, reward: 15, photo: true },
   { id: "g3", text: "Read 15 pages",       done: false, reward: 25 },
   { id: "g4", text: "Sleep before 11pm",   done: false, reward: 30 },
@@ -292,10 +296,10 @@ export const scorePlacement = (
 export const GameProvider = ({ children }: { children: ReactNode }) => {
   const [screen, setScreen] = useState<ScreenId>(null);
   const [selectedAgent, setSelectedAgent] = useState<AgentId>("sofia");
-  const [coins, setCoins] = useState(2486);
-  const [streak] = useState(12);
-  const [level, setLevel] = useState(14);
-  const [xp, setXp] = useState(72);
+  const [coins, setCoins] = useState(300);
+  const [streak, setStreak] = useState(0);
+  const [level, setLevel] = useState(1);
+  const [xp, setXp] = useState(0);
   const [agents] = useState<Agent[]>(initialAgents);
   const [buildings, setBuildings] = useState<Building[]>(initialBuildings);
   const [scenery] = useState<Scenery[]>(initialScenery);
@@ -305,24 +309,9 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const [chats, setChats] = useState<Record<AgentId, ChatMsg[]>>(seedChats);
   const [toast, setToast] = useState<string | null>(null);
 
-  // Island era state — era 1 is current, era 0 is in history
-  const [islandEra, setIslandEra] = useState(1);
-  const [islandHistory, setIslandHistory] = useState<IslandSnapshot[]>([
-    {
-      era: 0,
-      name: "Pine Hollow",
-      emoji: "🌿",
-      buildings: [
-        { id: "seed_b1", type: "house",    pos: [ 1.2,  0.8], district: "main", score: 8  },
-        { id: "seed_b2", type: "garden",   pos: [-1.5,  1.0], district: "main", score: 12 },
-        { id: "seed_b3", type: "fountain", pos: [ 0.0, -1.8], district: "main", score: 15 },
-        { id: "seed_b4", type: "bonfire",  pos: [ 2.5, -1.2], district: "main", score: 3  },
-      ],
-      level: 10,
-      coinsEarned: 1820,
-      graduatedAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-  ]);
+  // Island era state — fresh start
+  const [islandEra, setIslandEra] = useState(0);
+  const [islandHistory, setIslandHistory] = useState<IslandSnapshot[]>([]);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isVisiting, setIsVisiting] = useState(false);
   const [viewingEra, setViewingEra] = useState<number | null>(null);
@@ -382,6 +371,20 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     }, 900);
   }, []);
 
+  // Dev controls
+  const devNextDay = useCallback(() => {
+    setStreak(s => s + 1);
+    setGoals(gs => gs.map(g => ({ ...g, done: false })));
+    setCoins(c => c + 50);
+    showToast("☀️ New day! +50 coins, goals reset.");
+  }, [showToast]);
+
+  const devLevelUp = useCallback(() => {
+    setLevel(l => l + 1);
+    setXp(0);
+    showToast("⚡ Level up!");
+  }, [showToast]);
+
   const completeGoal = useCallback((id: string) => {
     setGoals((gs) => gs.map((g) => g.id === id ? { ...g, done: true } : g));
     const g = goals.find((x) => x.id === id);
@@ -433,6 +436,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       completeGoal, addGoal, editGoal, deleteGoal, pendingCheckIn, setPendingCheckIn,
       chats, sendChat,
       toast, showToast,
+      devNextDay, devLevelUp,
     }}>
       {children}
     </Ctx.Provider>

@@ -2,10 +2,19 @@ import { Coins, Flame, Sparkles, Sun, Bell, Settings, ChevronDown, Zap } from "l
 import { useGame } from "@/game/state";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+const SEASONS = ["Winter", "Spring", "Spring", "Summer", "Summer", "Summer", "Autumn", "Autumn", "Autumn", "Winter", "Winter", "Winter"];
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 export const TopBar = () => {
   const { coins, streak, level, xp, agents, screen, setScreen } = useGame();
   const isMobile = useIsMobile();
   const onlineCount = agents.filter((a) => a.online).length;
+
+  // Dynamic date — day number from streak, real day-of-week, season from month
+  const now = new Date();
+  const dayLabel = `Day ${streak + 1}`;
+  const dayOfWeek = DAYS[now.getDay()];
+  const season = SEASONS[now.getMonth()];
 
   /* ── Mobile layout ──────────────────────────────────── */
   if (isMobile) {
@@ -181,8 +190,8 @@ export const TopBar = () => {
           <div className="hud-panel-dark px-3 py-1.5 flex items-center gap-2">
             <Sun className="h-4 w-4 text-honey" strokeWidth={2.5} />
             <div className="text-right leading-none">
-              <p className="text-[9px] font-bold uppercase tracking-wider opacity-70">Day 87</p>
-              <p className="text-[11px] font-extrabold display-font">Spring · Wed</p>
+              <p className="text-[9px] font-bold uppercase tracking-wider opacity-70">{dayLabel}</p>
+              <p className="text-[11px] font-extrabold display-font">{season} · {dayOfWeek}</p>
             </div>
           </div>
           <button className="hud-panel-dark h-10 w-10 flex items-center justify-center hover:scale-105 transition relative">
