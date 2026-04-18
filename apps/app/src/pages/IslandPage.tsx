@@ -229,6 +229,9 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
       streak: islandDetails.island.streakDays ?? 0,
       dayCount: islandDetails.island.dayCount ?? 1,
       islandEra: islandDetails.island.era ?? 0,
+      // `eraSnapshots` was added to the schema later; cast until Convex
+      // codegen regenerates the Doc type.
+      eraSnapshots: (islandDetails.island as { eraSnapshots?: { era: number; level: number; currency: number; graduatedAt: number }[] }).eraSnapshots ?? [],
       serverNowMs: islandDetails.serverNowMs,
       agents,
     })

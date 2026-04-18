@@ -171,10 +171,18 @@ export interface ChatMsg { from: "agent" | "you"; text: string; ts: number; }
 // ── Decoration scenery (trees/rocks/flowers) — used for placement scoring ──
 export interface Scenery { id: string; type: "tree" | "rock" | "flower"; pos: [number, number]; district: DistrictId; variant: number; }
 
+export interface EraSnapshot {
+  era: number;
+  level: number;
+  currency: number;
+  graduatedAt: number;      // ms epoch
+}
+
 type ConvexSyncPatch = Partial<
   Pick<GameState, "level" | "xp" | "coins" | "streak" | "dayCount" | "islandEra" | "agents" | "buildings" | "goals">
 > & {
   serverNowMs?: number;
+  eraSnapshots?: EraSnapshot[];
 };
 
 interface GameState {
@@ -439,6 +447,7 @@ export const GameProvider = ({
   // islandHistory is derived below so every client (not just the one who
   // clicked Fly) can open the visit UI for past eras.
   const [islandEra, setIslandEra] = useState(initialData?.islandEra ?? 0);
+  const [eraSnapshots, setEraSnapshots] = useState<EraSnapshot[]>([]);
   const [trackAgent, setTrackAgent] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isVisiting, setIsVisiting] = useState(false);
@@ -457,6 +466,7 @@ export const GameProvider = ({
     if (patch.streak !== undefined) setStreak(patch.streak);
     if (patch.dayCount !== undefined) setDayCount(patch.dayCount);
     if (patch.islandEra !== undefined) setIslandEra(patch.islandEra);
+    if (patch.eraSnapshots !== undefined) setEraSnapshots(patch.eraSnapshots);
     if (patch.serverNowMs !== undefined) {
       setTimeOffsetMs(patch.serverNowMs - Date.now());
     }
@@ -598,22 +608,30 @@ export const GameProvider = ({
       bucket.push(b);
       buildingsByEra.set(era, bucket);
     }
+    // Look up per-era metadata (level at graduation, date) from the server
+    // snapshot array. Older islands created before this existed will have
+    // undefined entries — fall back to zeros + empty string for those.
+    const snapshotByEra = new Map<number, EraSnapshot>();
+    for (const s of eraSnapshots) {
+      snapshotByEra.set(s.era, s);
+    }
     const entries: IslandSnapshot[] = [];
     for (let era = 0; era < islandEra; era += 1) {
       const tier = ISLAND_TIERS[era];
       if (!tier) continue;
+      const snap = snapshotByEra.get(era);
       entries.push({
         era,
         name: tier.name,
         emoji: tier.emoji,
         buildings: buildingsByEra.get(era) ?? [],
-        level: 0,              // level-at-time-of-graduation isn't persisted
-        coinsEarned: 0,
-        graduatedAt: "",
+        level: snap?.level ?? 0,
+        coinsEarned: snap?.currency ?? 0,
+        graduatedAt: snap ? new Date(snap.graduatedAt).toISOString() : "",
       });
     }
     return entries;
-  }, [islandEra, buildings]);
+  }, [islandEra, buildings, eraSnapshots]);
 
   // Derived: group motivation factor (0–1). Used by ticker + UI.
   const groupMotivation = useMemo(() => {

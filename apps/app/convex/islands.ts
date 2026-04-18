@@ -233,8 +233,22 @@ export const graduateEra = mutation({
   async handler(ctx, { islandId }) {
     const island = await ctx.db.get(islandId);
     if (!island) throw new Error("Island not found");
-    const nextEra = (island.era ?? 0) + 1;
-    await ctx.db.patch(islandId, { era: nextEra });
+    const currentEra = island.era ?? 0;
+    const nextEra = currentEra + 1;
+    // Snapshot the era the player is leaving so the Visit UI can show the
+    // real level / coins / graduation date later. Existing snapshots are
+    // kept; we just append the outgoing era.
+    const prevSnapshots = island.eraSnapshots ?? [];
+    const snapshot = {
+      era: currentEra,
+      level: island.islandLevel ?? 0,
+      currency: island.currency ?? 0,
+      graduatedAt: Date.now(),
+    };
+    await ctx.db.patch(islandId, {
+      era: nextEra,
+      eraSnapshots: [...prevSnapshots, snapshot],
+    });
     return { era: nextEra };
   },
 });

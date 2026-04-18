@@ -24,6 +24,15 @@ export default defineSchema({
     // sent. Weekly cron only fires for an island when dayCount crosses a new
     // multiple of 7 past this value, so each week-boundary only sends once.
     lastWeeklySummaryDayCount: v.optional(v.number()),
+    // One entry per past era the player has already graduated off. Populated
+    // by `graduateEra`. Drives the Visit UI so each retired island shows its
+    // real "Lv.N when left" and the actual graduation date.
+    eraSnapshots: v.optional(v.array(v.object({
+      era: v.number(),
+      level: v.number(),
+      currency: v.number(),
+      graduatedAt: v.number(),
+    }))),
     difficulty: v.union(v.literal("easy"), v.literal("normal"), v.literal("hard")),
     gridSize: v.object({
       width: v.number(),
