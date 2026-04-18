@@ -1,9 +1,10 @@
-import { useContext, useRef, useMemo, RefObject } from "react";
+import { useContext, useRef, useMemo, RefObject, useState, useCallback } from "react";
 import type React from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Sky, Cloud, Clouds, Environment, Float } from "@react-three/drei";
 import * as THREE from "three";
 import { useGame, GameCtx, ISLAND_TIERS } from "../state";
+import type { Agent } from "../state";
 import { Building3D } from "./Building3D";
 import { Agent3D } from "./Agent3D";
 import { SceneryRenderer, GrassTuft } from "./Scenery3D";
@@ -216,6 +217,46 @@ const CameraTracker = ({
   return null;
 };
 
+/* ── Proximity detector — fires gossip when agents meet ── */
+const ProximityDetector = ({
+  agents,
+  agentPositions,
+  onGossip,
+}: {
+  agents: Agent[];
+  agentPositions: React.MutableRefObject<Map<string, THREE.Vector3>>;
+  onGossip: (a: Agent, b: Agent) => void;
+}) => {
+  const timers = useRef(new Map<string, number>());
+  const cooldowns = useRef(new Map<string, number>());
+  useFrame((_s, delta) => {
+    const now = Date.now();
+    for (let i = 0; i < agents.length; i++) {
+      for (let j = i + 1; j < agents.length; j++) {
+        const a = agents[i], b = agents[j];
+        if (!a || !b) continue;
+        const key = `${a.id}:${b.id}`;
+        const posA = agentPositions.current.get(a.id);
+        const posB = agentPositions.current.get(b.id);
+        if (!posA || !posB) continue;
+        if (posA.distanceTo(posB) < 1.5) {
+          timers.current.set(key, (timers.current.get(key) ?? 0) + delta);
+          const sustained = (timers.current.get(key) ?? 0) >= 2.0;
+          const cooled = now - (cooldowns.current.get(key) ?? 0) > 60_000;
+          if (sustained && cooled) {
+            cooldowns.current.set(key, now);
+            timers.current.set(key, 0);
+            onGossip(a, b);
+          }
+        } else {
+          timers.current.set(key, 0);
+        }
+      }
+    }
+  });
+  return null;
+};
+
 /* ── Distance-based blur — applied to canvas wrapper div ─ */
 const ZoomBlur = ({ containerRef }: { containerRef: RefObject<HTMLDivElement> }) => {
   useFrame(({ camera }) => {
@@ -235,8 +276,34 @@ const WAYPOINTS: [number, number][] = [
 ];
 
 /* ── Main scene ──────────────────────────────────────── */
+const BACKEND_URL = (import.meta as any).env?.VITE_BACKEND_URL ?? "http://localhost:5001";
+
 const Scene = ({ agentTrackPos }: { agentTrackPos: React.MutableRefObject<THREE.Vector3> }) => {
   const { agents, buildings, scenery, selectedAgent, setSelectedAgent, placingType, islandEra, viewingEra, islandHistory } = useGame();
+  const agentPositions = useRef(new Map<string, THREE.Vector3>());
+  const [gossipBubbles, setGossipBubbles] = useState<Map<string, string>>(new Map());
+
+  const onGossip = useCallback((agentA: Agent, agentB: Agent) => {
+    fetch(`${BACKEND_URL}/jobs/agent-gossip`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agent_personality: agentA.goal,
+        recent_events: [`Just met ${agentB.name} on the island`],
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const msg = data?.message ?? data?.gossip ?? data?.text;
+        if (!msg) return;
+        setGossipBubbles((prev) => new Map(prev).set(agentA.id, msg));
+        setTimeout(() => {
+          setGossipBubbles((prev) => { const n = new Map(prev); n.delete(agentA.id); return n; });
+        }, 5000);
+      })
+      .catch(() => {});
+  }, []);
+
   const displayEra = viewingEra ?? islandEra;
   const tier = ISLAND_TIERS[displayEra];
   const displayBuildings = viewingEra !== null
@@ -311,9 +378,17 @@ const Scene = ({ agentTrackPos }: { agentTrackPos: React.MutableRefObject<THREE.
             if (placingType) return;
             setSelectedAgent(a.id);
           }}
-          onPositionUpdate={a.isYou ? (p) => agentTrackPos.current.copy(p) : undefined}
+          onPositionUpdate={(p) => {
+            agentPositions.current.set(a.id, p.clone());
+            if (a.isYou) agentTrackPos.current.copy(p);
+          }}
+          gossipText={gossipBubbles.get(a.id) ?? null}
         />
       ))}
+
+      {viewingEra === null && (
+        <ProximityDetector agents={agents} agentPositions={agentPositions} onGossip={onGossip} />
+      )}
 
       {placingType && <PlacementGhost />}
       <BuildTicker />

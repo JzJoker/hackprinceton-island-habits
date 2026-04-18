@@ -10,6 +10,37 @@ export const getBuildings = query({
       .collect(),
 });
 
+export const tickBuildProgress = mutation({
+  args: { islandId: v.id("islands"), motivationFactor: v.number() },
+  handler: async (ctx, { islandId, motivationFactor }) => {
+    const INTERVAL_SECS = 30;
+    const GAME_DAY_SECS = 120;
+    const buildings = await ctx.db
+      .query("buildings")
+      .withIndex("by_island", (q) => q.eq("islandId", islandId))
+      .filter((q) => q.neq(q.field("state"), "complete"))
+      .collect();
+    for (const b of buildings) {
+      const rate = motivationFactor / (Math.max(1, b.buildTimeDays) * GAME_DAY_SECS);
+      const newProgress = Math.min(1, b.buildProgress + rate * INTERVAL_SECS);
+      const isComplete = newProgress >= 1;
+      await ctx.db.patch(b._id, {
+        buildProgress: newProgress,
+        state: isComplete ? "complete" : b.state,
+        ...(isComplete ? { completedAt: Date.now() } : {}),
+      });
+      if (isComplete) {
+        await ctx.db.insert("events", {
+          islandId,
+          type: "build_complete",
+          payload: { buildingId: b._id, type: b.type },
+          timestamp: Date.now(),
+        });
+      }
+    }
+  },
+});
+
 export const placeBuilding = mutation({
   args: {
     islandId: v.id("islands"),

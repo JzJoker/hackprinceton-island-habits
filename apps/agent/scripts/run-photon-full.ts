@@ -257,6 +257,36 @@ async function handleAdd(space: any, sender: string, goalText: string): Promise<
     goals: [goalText],
   });
 
+  // Generate K2 personality on first goal, if no agent exists yet
+  const existingAgent = await convex.query("agents:getAgent" as any, {
+    islandId: island._id,
+    phoneNumber: sender,
+  });
+  if (!existingAgent) {
+    const TRAITS = ["optimistic", "stoic", "anxious", "humorous", "energetic", "calm"];
+    const trait = TRAITS[Math.floor(Math.random() * TRAITS.length)];
+    try {
+      const pRes = await fetch(`${BACKEND_URL}/jobs/generate-personality`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ player_name: sender, approved_goals: [goalText], random_seed_trait: trait }),
+      });
+      if (pRes.ok) {
+        const pData = await pRes.json() as { personality_profile?: string; reminder_variants?: string[] };
+        await convex.mutation("agents:createAgent" as any, {
+          islandId: island._id,
+          phoneNumber: sender,
+          goals: [goalText],
+          personalityProfile: pData.personality_profile,
+          reminderVariants: pData.reminder_variants,
+        });
+        console.log(`[/add] personality generated for ${sender}`);
+      }
+    } catch (pErr: any) {
+      console.error("[/add] generate-personality failed, skipping:", pErr?.message ?? pErr);
+    }
+  }
+
   // Fetch the fresh goal list to include the count in the reply.
   const goals = await fetchGoals(island._id, sender);
 

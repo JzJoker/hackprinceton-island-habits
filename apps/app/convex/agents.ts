@@ -1,5 +1,17 @@
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
+
+// Look up an agent for a user on an island
+export const getAgent = query({
+  args: { islandId: v.id("islands"), phoneNumber: v.string() },
+  handler: async (ctx, args) =>
+    ctx.db
+      .query("agents")
+      .withIndex("by_island_phone", (q) =>
+        q.eq("islandId", args.islandId).eq("phoneNumber", args.phoneNumber)
+      )
+      .first(),
+});
 
 // Create agent personality for a user on an island
 export const createAgent = mutation({
@@ -7,24 +19,28 @@ export const createAgent = mutation({
     islandId: v.id("islands"),
     phoneNumber: v.string(),
     goals: v.array(v.string()),
+    personalityProfile: v.optional(v.string()),
+    reminderVariants: v.optional(v.array(v.string())),
   },
   async handler(ctx, args) {
-    // TODO: Call K2 Think V2 to generate personality
-    // For now, use a placeholder personality
-    const personality = `A helpful island companion committed to supporting your goals: ${args.goals.join(", ")}`;
-    
+    const personality =
+      args.personalityProfile ??
+      `A helpful island companion committed to supporting your goals: ${args.goals.join(", ")}`;
+
+    const variants = args.reminderVariants ?? [
+      "Good morning! Time to tackle your goals!",
+      "Let's make today productive!",
+      "You've got this! Get started on your goals.",
+      "Rise and shine! Ready to make a difference?",
+      "Another day, another chance to grow!",
+    ];
+
     const agentId = await ctx.db.insert("agents", {
       islandId: args.islandId,
       phoneNumber: args.phoneNumber,
       personalityProfile: personality,
       motivation: 100,
-      reminderVariants: [
-        "Good morning! Time to tackle your goals!",
-        "Let's make today productive!",
-        "You've got this! Get started on your goals.",
-        "Rise and shine! Ready to make a difference?",
-        "Another day, another chance to grow!",
-      ],
+      reminderVariants: variants,
       createdAt: Date.now(),
     });
 
