@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { SignUpPage } from './pages/SignUpPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { IslandPage } from './pages/IslandPage'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   return (
@@ -25,6 +26,7 @@ function App() {
       <Route path="/signup/*" element={<SignUpPage />} />
       <Route path="/" element={<RequireAuth><Navigate to="/dashboard" replace /></RequireAuth>} />
       <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
+      <Route path="/island" element={<RequireAuth><IslandPage /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/login" replace />} />

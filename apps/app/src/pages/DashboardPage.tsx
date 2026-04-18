@@ -107,7 +107,7 @@ export function DashboardPage() {
       await joinIslandMut({ islandId: island._id, phoneNumber: phone })
       setJoinCode('')
       setShowJoinDialog(false)
-      navigate(`/dashboard?islandId=${island._id}`)
+      navigate(`/island?islandId=${island._id}`)
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : 'Failed to join island')
     } finally {
@@ -154,7 +154,7 @@ export function DashboardPage() {
             {islands.map((island) => (
               <button
                 key={island._id}
-                onClick={() => navigate(`/dashboard?islandId=${island._id}`)}
+                onClick={() => navigate(`/island?islandId=${island._id}`)}
                 className={`rounded-lg border-2 p-3 text-left transition ${
                   island._id === islandId
                     ? 'border-black bg-neutral-100'
