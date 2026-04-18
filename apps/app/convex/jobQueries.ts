@@ -1,4 +1,5 @@
 import { internalQuery } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 
 // Returns all active island members with their agent, active goals, and island
@@ -6,8 +7,13 @@ export const getActiveMembersWithGoals = internalQuery({
   args: {},
   handler: async (ctx) => {
     const members = await ctx.db.query("islandMembers").collect();
-    const results = [];
-    const islandCache = new Map<string, typeof results[0]["island"] | null>();
+    const results: {
+      phoneNumber: string;
+      agent: Doc<"agents">;
+      goals: Doc<"goals">[];
+      island: Doc<"islands">;
+    }[] = [];
+    const islandCache = new Map<Id<"islands">, Doc<"islands"> | null>();
 
     for (const member of members) {
       let island = islandCache.get(member.islandId);
@@ -93,8 +99,14 @@ export const getUncheckedGoalsForDate = internalQuery({
       .filter((q) => q.eq(q.field("status"), "active"))
       .collect();
 
-    const results = [];
-    const islandCache = new Map<string, Awaited<ReturnType<typeof ctx.db.get>> | undefined>();
+    const results: {
+      goal: Doc<"goals">;
+      island: Doc<"islands">;
+      phoneNumber: string;
+      agent: Doc<"agents">;
+    }[] = [];
+    const islandCache = new Map<Id<"islands">, Doc<"islands"> | null>();
+
     for (const goal of activeGoals) {
       const checkIn = await ctx.db
         .query("checkIns")
@@ -154,7 +166,7 @@ export const getConstructingBuildings = internalQuery({
       .filter((q) => q.eq(q.field("state"), "constructing"))
       .collect();
 
-    const results = [];
+    const results: { building: Doc<"buildings">; agents: Doc<"agents">[] }[] = [];
     for (const building of buildings) {
       const agents = await ctx.db
         .query("agents")
@@ -176,7 +188,11 @@ export const getIslandsForWeeklySummary = internalQuery({
       .collect();
 
     const since = Date.now() - 7 * 86400000;
-    const results = [];
+    const results: {
+      island: Doc<"islands">;
+      phones: string[];
+      events: Doc<"events">[];
+    }[] = [];
 
     for (const island of islands) {
       const members = await ctx.db
