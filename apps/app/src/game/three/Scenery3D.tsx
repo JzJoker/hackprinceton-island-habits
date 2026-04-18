@@ -99,35 +99,41 @@ const OakTree = ({ pos, seed }: { pos: [number, number]; seed: number }) => (
 /* ── Palm tree ───────────────────────────────────────── */
 const PalmTree = ({ pos, seed }: { pos: [number, number]; seed: number }) => (
   <group position={[pos[0], 0.26, pos[1]]} rotation={[0, seed * Math.PI * 2, 0]}>
-    <mesh position={[0, 0.25, 0]} rotation={[0, 0, seed * 0.12]} castShadow>
-      <cylinderGeometry args={[0.05, 0.08, 0.5, 6]} />
+    <mesh position={[0, 0.23, 0]} rotation={[0, 0, seed * 0.1]} castShadow>
+      <cylinderGeometry args={[0.055, 0.085, 0.46, 7]} />
       <meshStandardMaterial color="#9B7850" roughness={0.85} />
     </mesh>
-    <mesh position={[0.02, 0.6, 0]} rotation={[0, 0, seed * 0.08]} castShadow>
-      <cylinderGeometry args={[0.04, 0.055, 0.4, 6]} />
+    <mesh position={[0.015, 0.57, 0]} rotation={[0, 0, seed * 0.06]} castShadow>
+      <cylinderGeometry args={[0.038, 0.055, 0.34, 7]} />
       <meshStandardMaterial color="#8B6840" roughness={0.85} />
     </mesh>
-    {/* Fronds sway energetically */}
-    <WindSway pos={pos} intensity={1.6}>
+    {/* Crown + broad fronds (avoids spiky/buggy silhouette) */}
+    <mesh position={[0.02, 0.78, 0]} castShadow>
+      <sphereGeometry args={[0.07, 10, 8]} />
+      <meshStandardMaterial color="#6A4A2C" roughness={0.88} />
+    </mesh>
+    <WindSway pos={pos} intensity={0.9}>
       {[0, 1, 2, 3, 4, 5].map((i) => {
-        const a = (i / 6) * Math.PI * 2;
+        const a = (i / 6) * Math.PI * 2 + (seed - 0.5) * 0.25;
+        const shade = i % 2 === 0 ? "#3F9452" : "#4FAE5E";
         return (
-          <mesh
-            key={i}
-            position={[Math.cos(a) * 0.12, 0.85, Math.sin(a) * 0.12]}
-            rotation={[Math.PI / 4.5, a, 0]}
-            castShadow
-          >
-            <coneGeometry args={[0.06, 0.5, 4]} />
-            <meshStandardMaterial color="#3D8A4A" roughness={0.7} />
-          </mesh>
+          <group key={i} position={[0.02, 0.8, 0]} rotation={[0, a, 0]}>
+            <mesh position={[0.22, 0, 0]} rotation={[0, 0, -Math.PI / 2.8]} castShadow>
+              <capsuleGeometry args={[0.032, 0.28, 4, 8]} />
+              <meshStandardMaterial color={shade} roughness={0.74} />
+            </mesh>
+            <mesh position={[0.35, -0.03, 0]} rotation={[0, 0, -Math.PI / 2.65]} castShadow>
+              <capsuleGeometry args={[0.02, 0.18, 4, 8]} />
+              <meshStandardMaterial color={shade} roughness={0.74} />
+            </mesh>
+          </group>
         );
       })}
-      <mesh position={[0.08, 0.78, 0.04]}>
+      <mesh position={[0.08, 0.79, 0.04]}>
         <sphereGeometry args={[0.045, 8, 8]} />
         <meshStandardMaterial color="#5A3820" roughness={0.85} />
       </mesh>
-      <mesh position={[-0.04, 0.76, -0.06]}>
+      <mesh position={[-0.04, 0.78, -0.06]}>
         <sphereGeometry args={[0.04, 8, 8]} />
         <meshStandardMaterial color="#4A2818" roughness={0.85} />
       </mesh>

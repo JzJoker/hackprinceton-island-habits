@@ -574,7 +574,7 @@ export const Island3D = () => {
             zoomSpeed={2.2}
           />
           <EffectComposer multisampling={0} enableNormalPass={false}>
-            <Pixelation granularity={1} />
+            <Pixelation granularity={0.5} />
             <Vignette eskil={false} offset={0.18} darkness={0.34} />
           </EffectComposer>
         </GameCtx.Provider>

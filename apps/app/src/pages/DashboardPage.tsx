@@ -343,21 +343,12 @@ export function DashboardPage() {
             color: '#f2f7ff',
             boxShadow: '0 14px 24px -18px rgba(14,34,55,0.75)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div>
                 <p style={{ ...nunito(800, 11), color: '#a8bfd6', margin: 0, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Your Islands</p>
                 <h1 style={{ ...fredoka(26), margin: '2px 0 0', lineHeight: 1.1, color: '#f6fbff' }}>
                   {selectedIsland ? selectedIsland.name : 'Island Party'}
                 </h1>
-              </div>
-              <div style={{
-                borderRadius: '999px',
-                padding: '6px 10px',
-                background: 'rgba(255,255,255,0.1)',
-                border: '1px solid rgba(255,255,255,0.24)',
-                ...nunito(900, 12),
-              }}>
-                ⚡ Lv.{selectedIsland?.islandLevel ?? 0}
               </div>
             </div>
             <p style={{ ...nunito(700, 13), color: '#c5d9ea', margin: '8px 0 0' }}>
