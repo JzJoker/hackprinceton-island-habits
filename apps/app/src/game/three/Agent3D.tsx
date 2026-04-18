@@ -53,31 +53,72 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
   useFrame((_state, delta) => {
     if (!group.current) return;
 
-    // ── Waypoints on single island ──────────────────────
-    if (!waypoints || waypoints.length === 0) return;
-    const target = waypoints[targetIdx.current % waypoints.length];
-    if (!target) return;
+    // ── Find nearest under-construction building ────────
+    const CONSTRUCTION_RANGE = 1.6;  // stop and build within this radius
+    const CONSTRUCTION_SEEK = 6.0;   // notice a site from this far
+    let nearestSite: [number, number] | null = null;
+    let nearestDist = Infinity;
+    for (const b of buildingsRef.current) {
+      if ((b.buildProgress ?? 1) >= 1) continue;
+      const dx = b.pos[0] - pos.current.x;
+      const dz = b.pos[1] - pos.current.z;
+      const d = Math.hypot(dx, dz);
+      if (d < nearestDist) { nearestDist = d; nearestSite = b.pos; }
+    }
+    const nearConstruction = nearestSite !== null && nearestDist < CONSTRUCTION_RANGE;
+    const seekConstruction = nearestSite !== null && nearestDist < CONSTRUCTION_SEEK && !nearConstruction;
 
-    const tv = new THREE.Vector3(target[0], GROUND_Y, target[1]);
-    const dir = tv.clone().sub(pos.current);
-    const distance = dir.length();
-    const walking = distance > 0.15;
-
-    if (!walking) {
-      idleTimer.current += delta;
-      if (idleTimer.current > 2 + Math.random() * 3) {
-        // Pick new waypoint
-        targetIdx.current = Math.floor(Math.random() * waypoints.length);
-        idleTimer.current = 0;
+    // ── Movement: walk to construction site or waypoints ─
+    let walking = false;
+    if (nearConstruction) {
+      // Stop — face the building and start hammering
+      if (nearestSite) {
+        const dx = nearestSite[0] - pos.current.x;
+        const dz = nearestSite[1] - pos.current.z;
+        const targetAngle = Math.atan2(dx, dz);
+        const diff = targetAngle - angle.current;
+        const wrapped = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI;
+        angle.current += wrapped * 0.08;
+      }
+      idleTimer.current = 0;
+    } else if (seekConstruction && nearestSite) {
+      // Walk toward the construction site
+      const tv = new THREE.Vector3(nearestSite[0], GROUND_Y, nearestSite[1]);
+      const dir = tv.clone().sub(pos.current);
+      const distance = dir.length();
+      walking = distance > 0.15;
+      if (walking) {
+        dir.normalize();
+        pos.current.add(dir.clone().multiplyScalar(Math.min(distance, speed * delta)));
+        const targetAngle = Math.atan2(dir.x, dir.z);
+        const diff = targetAngle - angle.current;
+        const wrapped = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI;
+        angle.current += wrapped * 0.12;
       }
     } else {
-      dir.normalize();
-      const move = Math.min(distance, speed * delta);
-      pos.current.add(dir.multiplyScalar(move));
-      const targetAngle = Math.atan2(dir.x, dir.z);
-      const diff = targetAngle - angle.current;
-      const wrapped = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI;
-      angle.current += wrapped * 0.12;
+      // Normal waypoint wandering
+      if (!waypoints || waypoints.length === 0) return;
+      const target = waypoints[targetIdx.current % waypoints.length];
+      if (!target) return;
+      const tv = new THREE.Vector3(target[0], GROUND_Y, target[1]);
+      const dir = tv.clone().sub(pos.current);
+      const distance = dir.length();
+      walking = distance > 0.15;
+      if (!walking) {
+        idleTimer.current += delta;
+        if (idleTimer.current > 2 + Math.random() * 3) {
+          targetIdx.current = Math.floor(Math.random() * waypoints.length);
+          idleTimer.current = 0;
+        }
+      } else {
+        dir.normalize();
+        const move = Math.min(distance, speed * delta);
+        pos.current.add(dir.multiplyScalar(move));
+        const targetAngle = Math.atan2(dir.x, dir.z);
+        const diff = targetAngle - angle.current;
+        const wrapped = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI;
+        angle.current += wrapped * 0.12;
+      }
     }
 
     // ── Obstacle repulsion ──────────────────────────────
@@ -114,7 +155,6 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
     pos.current.z += repZ.v * dt;
 
     // ── Hard clamp to island zone ────────────────────────
-    // Agent can NEVER leave the island (no water walking).
     {
       const dx = pos.current.x;
       const dz = pos.current.z;
@@ -140,16 +180,33 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
     group.current.rotation.y = angle.current;
     onPositionUpdate?.(pos.current);
 
-    // Walk animation
-    walkCycle.current += delta * (walking ? speed * 12 : 0);
+    // ── Animation cycle — always ticks when building ────
+    walkCycle.current += delta * (nearConstruction ? 10 : (walking ? speed * 12 : 0));
     const t = walkCycle.current;
     const swing = walking ? Math.sin(t) * 0.45 : 0;
-    const bounce = walking ? Math.abs(Math.sin(t * 2)) * 0.035 : Math.sin(Date.now() * 0.002) * 0.008;
+    const bounce = (walking || nearConstruction)
+      ? Math.abs(Math.sin(t * 2)) * 0.035
+      : Math.sin(Date.now() * 0.002) * 0.008;
 
-    if (leftLeg.current) leftLeg.current.rotation.x = swing;
-    if (rightLeg.current) rightLeg.current.rotation.x = -swing;
-    if (leftArm.current) leftArm.current.rotation.x = -swing * 0.5;
-    if (rightArm.current) rightArm.current.rotation.x = swing * 0.5;
+    if (leftLeg.current) leftLeg.current.rotation.x = nearConstruction ? 0 : swing;
+    if (rightLeg.current) rightLeg.current.rotation.x = nearConstruction ? 0 : -swing;
+
+    if (nearConstruction) {
+      // Hammering: right arm pumps aggressively up and down
+      const hammer = Math.sin(t) * 0.9;
+      if (rightArm.current) {
+        rightArm.current.rotation.x = -0.6 + hammer;
+        rightArm.current.rotation.z = -0.25;
+      }
+      if (leftArm.current) {
+        leftArm.current.rotation.x = 0.3;
+        leftArm.current.rotation.z = 0.1;
+      }
+      if (leftArm.current) leftArm.current.rotation.x = 0.2;
+    } else {
+      if (leftArm.current) leftArm.current.rotation.x = -swing * 0.5;
+      if (rightArm.current) rightArm.current.rotation.x = swing * 0.5;
+    }
 
     // Body bounce
     if (bodyGroup.current) {

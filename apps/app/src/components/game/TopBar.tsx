@@ -1,4 +1,4 @@
-import { Coins, Flame, Sparkles, Sun, Bell, Settings, ChevronDown, Zap } from "lucide-react";
+import { Coins, Flame, Sparkles, Sun, Settings, ChevronDown, Zap } from "lucide-react";
 import { useGame } from "@/game/state";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -58,11 +58,6 @@ export const TopBar = () => {
                 </div>
               </div>
 
-              {/* Bell */}
-              <button className="h-8 w-8 flex-shrink-0 flex items-center justify-center rounded-xl bg-foreground/5 hover:bg-foreground/10 transition active:scale-90 relative">
-                <Bell className="h-3.5 w-3.5 text-foreground/70" strokeWidth={2.5} />
-                <span className="absolute top-1.5 right-1.5 h-[7px] w-[7px] rounded-full bg-accent border border-card" />
-              </button>
             </div>
 
             {/* Thin divider */}
@@ -194,10 +189,6 @@ export const TopBar = () => {
               <p className="text-[11px] font-extrabold display-font">{season} · {dayOfWeek}</p>
             </div>
           </div>
-          <button className="hud-panel-dark h-10 w-10 flex items-center justify-center hover:scale-105 transition relative">
-            <Bell className="h-4 w-4" strokeWidth={2.5} />
-            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-accent animate-pulse" />
-          </button>
           <button className="hud-panel-dark h-10 w-10 flex items-center justify-center hover:scale-105 transition">
             <Settings className="h-4 w-4" strokeWidth={2.5} />
           </button>

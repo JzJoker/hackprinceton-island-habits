@@ -3,14 +3,21 @@ import { useGame, BUILD_LIBRARY } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 
 export const BuildOverlay = () => {
-  const { screen, setScreen, coins, setPlacingType, placingType } = useGame();
+  const { screen, setScreen, coins, level, setPlacingType, placingType } = useGame();
   const { closing, close } = useOverlayClose(() => setScreen(null));
 
   if (screen !== "build" && !closing) return null;
 
+  const isLocked = (b: typeof BUILD_LIBRARY[number]) =>
+    (b.unlockLevel != null && level < b.unlockLevel) || !!b.locked;
+  const lockMsg = (b: typeof BUILD_LIBRARY[number]) =>
+    b.unlockLevel != null && level < b.unlockLevel
+      ? `Unlock at Lv.${b.unlockLevel}`
+      : b.locked ?? null;
+
   const startPlacing = (type: typeof BUILD_LIBRARY[number]["type"]) => {
     const opt = BUILD_LIBRARY.find((b) => b.type === type)!;
-    if (opt.locked) return;
+    if (isLocked(opt)) return;
     if (coins < opt.cost) return;
     setPlacingType(type);
     setScreen(null);
@@ -55,9 +62,9 @@ export const BuildOverlay = () => {
         {/* Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 overflow-y-auto bg-gradient-to-b from-background to-secondary-soft/20">
           {BUILD_LIBRARY.map((b) => {
-            const locked = !!b.locked;
+            const locked = isLocked(b);
             const tooExpensive = !locked && coins < b.cost;
-            const lockReason = b.locked || null;
+            const lockReason = lockMsg(b);
             const isPlacing = placingType === b.type;
             const tier = b.cost < 150 ? "common" : b.cost < 300 ? "rare" : b.cost < 600 ? "epic" : "legendary";
             const tierStyle = {

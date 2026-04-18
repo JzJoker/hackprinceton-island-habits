@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef } from "react";
 import { X, Zap } from "lucide-react";
 import { useGame } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
@@ -9,17 +9,6 @@ export const PartyOverlay = () => {
   const isMobile = useIsMobile();
   const { closing, close } = useOverlayClose(() => setScreen(null));
   const panelRef = useRef<HTMLDivElement>(null);
-
-  // Desktop: click-outside to close
-  useEffect(() => {
-    if (isMobile) return;
-    if (screen !== "party") return;
-    const handler = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) close();
-    };
-    const t = setTimeout(() => document.addEventListener("mousedown", handler), 50);
-    return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };
-  }, [screen, close, isMobile]);
 
   if (screen !== "party" && !closing) return null;
 
@@ -125,7 +114,7 @@ export const PartyOverlay = () => {
         <div className="px-4 py-2.5 border-b border-foreground/10 bg-gradient-to-r from-primary-soft/50 to-secondary-soft/30 flex-shrink-0">
           <p className="display-font text-sm font-bold">Party · {islandName}</p>
           <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">
-            {agents.filter((a) => a.online).length}/{agents.length} online · click outside to close
+            {agents.filter((a) => a.online).length}/{agents.length} online
           </p>
         </div>
         <AgentList />

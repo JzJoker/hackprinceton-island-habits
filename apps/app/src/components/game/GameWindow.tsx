@@ -6,7 +6,6 @@ import { Island3D } from "@/game/three/Island3D";
 import { BuildOverlay } from "@/game/overlays/BuildOverlay";
 import { RecapOverlay } from "@/game/overlays/RecapOverlay";
 import { HistoryOverlay } from "@/game/overlays/HistoryOverlay";
-import { CheckInOverlay } from "@/game/overlays/CheckInOverlay";
 import { ExpandOverlay } from "@/game/overlays/ExpandOverlay";
 import { PartyOverlay } from "@/game/overlays/PartyOverlay";
 import { ToastLayer } from "@/game/overlays/ToastLayer";
@@ -134,7 +133,6 @@ export const GameWindow = () => (
         <BuildOverlay />
         <RecapOverlay />
         <HistoryOverlay />
-        <CheckInOverlay />
         <ExpandOverlay />
       </div>
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 import a1 from "@/assets/agent-1.png";
 import a2 from "@/assets/agent-2.png";
@@ -8,7 +8,7 @@ import a5 from "@/assets/agent-5.png";
 
 export type AgentId = string;
 export type ScreenId = "island" | "build" | "chat" | "recap" | "history" | "checkin" | "expand" | "party" | null;
-export type BuildingType = "house" | "garden" | "library" | "gym" | "lighthouse" | "fountain" | "bonfire" | "cabin" | "dock" | "shrine" | "windmill" | "treehouse";
+export type BuildingType = "house" | "garden" | "library" | "gym" | "lighthouse" | "fountain" | "bonfire" | "cabin" | "dock" | "shrine" | "windmill" | "treehouse" | "bakery" | "teahouse" | "observatory" | "belltower" | "zengarden" | "crystalgrotto" | "amphitheater" | "moongate";
 export type DistrictId = "main" | "forest" | "beach" | "hill";
 
 export const ISLAND_TIERS = [
@@ -53,6 +53,8 @@ export interface Building {
   rot?: number;
   district: DistrictId;
   score?: number;
+  buildProgress: number;   // 0 = just placed, 1 = complete
+  buildTime: number;       // total days needed (from BUILD_LIBRARY.buildDays)
 }
 
 export interface BuildOption {
@@ -62,7 +64,9 @@ export interface BuildOption {
   radius: number;        // footprint radius in world units
   emoji: string;
   district: DistrictId;
-  locked?: string | null;
+  locked?: string | null;  // kept for custom messages; prefer unlockLevel
+  unlockLevel?: number;    // player level required to unlock
+  buildDays: number;
   // Islanders-style placement scoring
   rules: {
     likes?: { type: BuildingType | "tree" | "rock" | "water" | "flower"; range: number; pts: number }[];
@@ -71,36 +75,72 @@ export interface BuildOption {
 }
 
 export const BUILD_LIBRARY: BuildOption[] = [
-  { type: "house", name: "Cottage", cost: 120, radius: 0.55, emoji: "🏠", district: "main",
+  // ── Lv 0 starters ──────────────────────────────────────────────────────────
+  { type: "house", name: "Cottage", cost: 120, radius: 0.55, emoji: "🏠", district: "main", buildDays: 3,
     rules: { likes: [{ type: "tree", range: 1.5, pts: 2 }, { type: "fountain", range: 2, pts: 4 }, { type: "garden", range: 1.5, pts: 3 }],
              dislikes: [{ type: "gym", range: 1.5, pts: -3 }, { type: "bonfire", range: 1.2, pts: -2 }] } },
-  { type: "garden", name: "Garden", cost: 80, radius: 0.4, emoji: "🌷", district: "main",
+  { type: "garden", name: "Garden", cost: 80, radius: 0.4, emoji: "🌷", district: "main", buildDays: 1,
     rules: { likes: [{ type: "house", range: 1.5, pts: 3 }, { type: "fountain", range: 2, pts: 5 }, { type: "tree", range: 1.5, pts: 2 }] } },
-  { type: "library", name: "Library", cost: 240, radius: 0.7, emoji: "📚", district: "main",
-    rules: { likes: [{ type: "tree", range: 2, pts: 3 }, { type: "garden", range: 2, pts: 4 }],
-             dislikes: [{ type: "gym", range: 2, pts: -5 }, { type: "bonfire", range: 1.5, pts: -3 }] } },
-  { type: "gym", name: "Gym hut", cost: 200, radius: 0.6, emoji: "🏋️", district: "main",
-    rules: { likes: [{ type: "fountain", range: 2, pts: 3 }, { type: "rock", range: 1.5, pts: 2 }],
-             dislikes: [{ type: "house", range: 1.5, pts: -3 }, { type: "library", range: 2, pts: -5 }] } },
-  { type: "fountain", name: "Fountain", cost: 160, radius: 0.55, emoji: "⛲", district: "main",
-    rules: { likes: [{ type: "house", range: 2, pts: 3 }, { type: "garden", range: 2, pts: 5 }, { type: "library", range: 2, pts: 3 }] } },
-  { type: "bonfire", name: "Bonfire", cost: 60, radius: 0.4, emoji: "🔥", district: "main",
+  { type: "bonfire", name: "Bonfire", cost: 60, radius: 0.4, emoji: "🔥", district: "main", buildDays: 1,
     rules: { likes: [{ type: "tree", range: 2, pts: 1 }],
              dislikes: [{ type: "house", range: 1.2, pts: -2 }, { type: "library", range: 1.5, pts: -3 }] } },
-  { type: "lighthouse", name: "Lighthouse", cost: 800, radius: 0.7, emoji: "🗼", district: "beach", locked: "Reach Lv.15",
-    rules: { likes: [{ type: "water", range: 3, pts: 8 }, { type: "dock", range: 2.5, pts: 4 }] } },
-  { type: "cabin", name: "Forest cabin", cost: 180, radius: 0.55, emoji: "🛖", district: "forest",
+  // ── Lv 2 ───────────────────────────────────────────────────────────────────
+  { type: "bakery", name: "Bakery", cost: 110, radius: 0.5, emoji: "🥐", district: "main", buildDays: 2, unlockLevel: 2,
+    rules: { likes: [{ type: "house", range: 1.5, pts: 4 }, { type: "garden", range: 1.5, pts: 3 }, { type: "fountain", range: 2, pts: 2 }],
+             dislikes: [{ type: "gym", range: 1.5, pts: -2 }] } },
+  // ── Lv 3 ───────────────────────────────────────────────────────────────────
+  { type: "cabin", name: "Forest Cabin", cost: 180, radius: 0.55, emoji: "🛖", district: "forest", buildDays: 3, unlockLevel: 3,
     rules: { likes: [{ type: "tree", range: 1.5, pts: 4 }, { type: "cabin", range: 2.5, pts: 2 }] } },
-  { type: "dock", name: "Wooden dock", cost: 140, radius: 0.6, emoji: "⚓", district: "beach",
+  { type: "dock", name: "Wooden Dock", cost: 140, radius: 0.6, emoji: "⚓", district: "beach", buildDays: 2, unlockLevel: 3,
     rules: { likes: [{ type: "water", range: 2, pts: 6 }] } },
-  { type: "shrine", name: "Hill shrine", cost: 320, radius: 0.55, emoji: "⛩️", district: "hill",
+  // ── Lv 4 ───────────────────────────────────────────────────────────────────
+  { type: "fountain", name: "Fountain", cost: 160, radius: 0.55, emoji: "⛲", district: "main", buildDays: 3, unlockLevel: 4,
+    rules: { likes: [{ type: "house", range: 2, pts: 3 }, { type: "garden", range: 2, pts: 5 }, { type: "library", range: 2, pts: 3 }] } },
+  { type: "teahouse", name: "Tea House", cost: 150, radius: 0.55, emoji: "🍵", district: "forest", buildDays: 3, unlockLevel: 4,
+    rules: { likes: [{ type: "tree", range: 1.5, pts: 4 }, { type: "garden", range: 2, pts: 3 }, { type: "rock", range: 1.5, pts: 2 }],
+             dislikes: [{ type: "gym", range: 2, pts: -3 }, { type: "bonfire", range: 1.5, pts: -2 }] } },
+  // ── Lv 5 ───────────────────────────────────────────────────────────────────
+  { type: "gym", name: "Gym Hut", cost: 200, radius: 0.6, emoji: "🏋️", district: "main", buildDays: 4, unlockLevel: 5,
+    rules: { likes: [{ type: "fountain", range: 2, pts: 3 }, { type: "rock", range: 1.5, pts: 2 }],
+             dislikes: [{ type: "house", range: 1.5, pts: -3 }, { type: "library", range: 2, pts: -5 }] } },
+  { type: "zengarden", name: "Zen Garden", cost: 130, radius: 0.5, emoji: "🪨", district: "forest", buildDays: 2, unlockLevel: 5,
+    rules: { likes: [{ type: "shrine", range: 2.5, pts: 5 }, { type: "tree", range: 1.5, pts: 3 }, { type: "rock", range: 1.5, pts: 3 }, { type: "flower", range: 1.5, pts: 2 }],
+             dislikes: [{ type: "gym", range: 2, pts: -4 }, { type: "bonfire", range: 1.5, pts: -3 }] } },
+  // ── Lv 6 ───────────────────────────────────────────────────────────────────
+  { type: "library", name: "Library", cost: 240, radius: 0.7, emoji: "📚", district: "main", buildDays: 5, unlockLevel: 6,
+    rules: { likes: [{ type: "tree", range: 2, pts: 3 }, { type: "garden", range: 2, pts: 4 }],
+             dislikes: [{ type: "gym", range: 2, pts: -5 }, { type: "bonfire", range: 1.5, pts: -3 }] } },
+  { type: "observatory", name: "Observatory", cost: 220, radius: 0.6, emoji: "🔭", district: "hill", buildDays: 5, unlockLevel: 6,
+    rules: { likes: [{ type: "rock", range: 2, pts: 4 }, { type: "tree", range: 2, pts: 2 }, { type: "water", range: 3, pts: 3 }],
+             dislikes: [{ type: "bonfire", range: 2, pts: -4 }] } },
+  // ── Lv 7 ───────────────────────────────────────────────────────────────────
+  { type: "shrine", name: "Hill Shrine", cost: 320, radius: 0.55, emoji: "⛩️", district: "hill", buildDays: 4, unlockLevel: 7,
     rules: { likes: [{ type: "tree", range: 2, pts: 3 }, { type: "rock", range: 2, pts: 3 }] } },
-  { type: "windmill", name: "Windmill", cost: 360, radius: 0.65, emoji: "🌬️", district: "main",
+  { type: "belltower", name: "Bell Tower", cost: 190, radius: 0.5, emoji: "🔔", district: "main", buildDays: 4, unlockLevel: 7,
+    rules: { likes: [{ type: "shrine", range: 3, pts: 5 }, { type: "house", range: 2, pts: 3 }, { type: "garden", range: 2, pts: 2 }],
+             dislikes: [{ type: "windmill", range: 2, pts: -2 }] } },
+  { type: "windmill", name: "Windmill", cost: 360, radius: 0.65, emoji: "🌬️", district: "main", buildDays: 5, unlockLevel: 7,
     rules: { likes: [{ type: "garden", range: 2.5, pts: 5 }, { type: "house", range: 2.5, pts: 3 }],
              dislikes: [{ type: "library", range: 2, pts: -2 }] } },
-  { type: "treehouse", name: "Treehouse", cost: 280, radius: 0.55, emoji: "🌳", district: "main",
+  // ── Lv 8 ───────────────────────────────────────────────────────────────────
+  { type: "treehouse", name: "Treehouse", cost: 280, radius: 0.55, emoji: "🌳", district: "main", buildDays: 4, unlockLevel: 8,
     rules: { likes: [{ type: "tree", range: 1.2, pts: 6 }, { type: "flower", range: 1.5, pts: 2 }],
              dislikes: [{ type: "bonfire", range: 1.5, pts: -4 }] } },
+  // ── Lv 9 ───────────────────────────────────────────────────────────────────
+  { type: "crystalgrotto", name: "Crystal Grotto", cost: 350, radius: 0.6, emoji: "💎", district: "hill", buildDays: 6, unlockLevel: 9,
+    rules: { likes: [{ type: "rock", range: 2, pts: 5 }, { type: "shrine", range: 2.5, pts: 4 }, { type: "fountain", range: 2, pts: 3 }],
+             dislikes: [{ type: "bonfire", range: 2, pts: -3 }, { type: "gym", range: 1.5, pts: -2 }] } },
+  // ── Lv 10 ──────────────────────────────────────────────────────────────────
+  { type: "lighthouse", name: "Lighthouse", cost: 800, radius: 0.7, emoji: "🗼", district: "beach", buildDays: 7, unlockLevel: 10,
+    rules: { likes: [{ type: "water", range: 3, pts: 8 }, { type: "dock", range: 2.5, pts: 4 }] } },
+  // ── Lv 11 ──────────────────────────────────────────────────────────────────
+  { type: "amphitheater", name: "Amphitheater", cost: 420, radius: 0.8, emoji: "🎭", district: "main", buildDays: 7, unlockLevel: 11,
+    rules: { likes: [{ type: "fountain", range: 2.5, pts: 4 }, { type: "garden", range: 2, pts: 3 }, { type: "house", range: 2, pts: 2 }],
+             dislikes: [{ type: "library", range: 2, pts: -4 }] } },
+  // ── Lv 13 ──────────────────────────────────────────────────────────────────
+  { type: "moongate", name: "Moon Gate", cost: 560, radius: 0.65, emoji: "🌙", district: "beach", buildDays: 8, unlockLevel: 13,
+    rules: { likes: [{ type: "water", range: 2.5, pts: 5 }, { type: "shrine", range: 3, pts: 6 }, { type: "rock", range: 2, pts: 3 }],
+             dislikes: [{ type: "bonfire", range: 2, pts: -3 }, { type: "gym", range: 2, pts: -2 }] } },
 ];
 
 export interface District {
@@ -176,6 +216,17 @@ interface GameState {
   islandName: string;
   trackAgent: boolean;
   setTrackAgent: (v: boolean) => void;
+
+  // Dev controls (desktop only)
+  devNextDay: () => void;       // ☀️✓ good day — all goals done, mood up
+  devNextDayBad: () => void;    // ☀️✗ bad day  — no goals done, mood down
+  devLevelUp: () => void;
+
+  // Real-time build progress (called by BuildTicker in scene)
+  tickBuildings: (delta: number) => void;
+
+  // Derived motivation value: 0–1, computed from agent moods + online fraction
+  groupMotivation: number;
 }
 
 export interface GameBootstrapData {
@@ -191,7 +242,12 @@ export interface GameBootstrapData {
 const Ctx = createContext<GameState | null>(null);
 export const GameCtx = Ctx;
 
-const FALLBACK_AGENTS: Agent[] = [
+// How many real seconds make up 1 in-game day.
+// At 100% motivation: a 3-day building takes 3 × GAME_DAY_SECS real seconds.
+// For the demo this is 2 minutes so buildings feel snappy but still meaningful.
+export const GAME_DAY_SECS = 120;
+
+const initialAgents: Agent[] = [
   { id: "sofia",  name: "Sofia",  img: a5, skin: "#F4D7B5", shirt: "#7AC5A0", pants: "#3A4A6B", hair: "#3B2820", hairStyle: "long",  mood: 76, line: "Hydrating!",         goal: "2L water", online: true, isYou: true, home: [  0.5,  -1.2] },
   { id: "kael",   name: "Kael",   img: a1, skin: "#E8C29A", shirt: "#6FA8DC", pants: "#2A3550", hair: "#1F1410", hairStyle: "cap",   mood: 84, line: "Let's lift today!", goal: "Gym 45m",  online: true,              home: [ -2.5,  -0.5] },
   { id: "theo",   name: "Theo",   img: a2, skin: "#F4D7B5", shirt: "#C9A0E0", pants: "#5A4030", hair: "#5A3820", hairStyle: "short", mood: 62, line: "Reading slowly...", goal: "Read 15p", online: true,              home: [  2.0,   1.5] },
@@ -311,16 +367,16 @@ export const GameProvider = ({
   initialData?: GameBootstrapData;
 }) => {
   const seededIslandName = initialData?.islandName ?? "Pine Hollow";
-  const seededAgents = initialData?.agents?.length ? initialData.agents : FALLBACK_AGENTS;
+  const seededAgents = initialData?.agents?.length ? initialData.agents : initialAgents;
   const seededGoals = initialData?.goals?.length ? initialData.goals : initialGoals;
 
   const [screen, setScreen] = useState<ScreenId>(null);
-  const [selectedAgent, setSelectedAgent] = useState<AgentId>(seededAgents[0]?.id ?? "");
-  const [coins, setCoins] = useState(initialData?.coins ?? 2486);
-  const [streak] = useState(initialData?.streak ?? 12);
-  const [level, setLevel] = useState(initialData?.level ?? 14);
-  const [xp, setXp] = useState(initialData?.xp ?? 72);
-  const [agents] = useState<Agent[]>(seededAgents);
+  const [selectedAgent, setSelectedAgent] = useState<AgentId>(seededAgents[0]?.id ?? "sofia");
+  const [coins, setCoins] = useState(initialData?.coins ?? 300);
+  const [streak, setStreak] = useState(initialData?.streak ?? 0);
+  const [level, setLevel] = useState(initialData?.level ?? 1);
+  const [xp, setXp] = useState(initialData?.xp ?? 0);
+  const [agents, setAgents] = useState<Agent[]>(seededAgents);
   const [buildings, setBuildings] = useState<Building[]>(initialBuildings);
   const [scenery] = useState<Scenery[]>(initialScenery);
   const [goals, setGoals] = useState<Goal[]>(seededGoals);
@@ -338,10 +394,10 @@ export const GameProvider = ({
       name: seededIslandName,
       emoji: "🌿",
       buildings: [
-        { id: "seed_b1", type: "house",    pos: [ 1.2,  0.8], district: "main", score: 8  },
-        { id: "seed_b2", type: "garden",   pos: [-1.5,  1.0], district: "main", score: 12 },
-        { id: "seed_b3", type: "fountain", pos: [ 0.0, -1.8], district: "main", score: 15 },
-        { id: "seed_b4", type: "bonfire",  pos: [ 2.5, -1.2], district: "main", score: 3  },
+        { id: "seed_b1", type: "house",    pos: [ 1.2,  0.8], district: "main", score: 8,  buildProgress: 1, buildTime: 3 },
+        { id: "seed_b2", type: "garden",   pos: [-1.5,  1.0], district: "main", score: 12, buildProgress: 1, buildTime: 1 },
+        { id: "seed_b3", type: "fountain", pos: [ 0.0, -1.8], district: "main", score: 15, buildProgress: 1, buildTime: 3 },
+        { id: "seed_b4", type: "bonfire",  pos: [ 2.5, -1.2], district: "main", score: 3,  buildProgress: 1, buildTime: 1 },
       ],
       level: 10,
       coinsEarned: 1820,
@@ -391,7 +447,7 @@ export const GameProvider = ({
     if (!result.valid) { showToast(result.reason || "Can't place here"); return false; }
     if (coins < opt.cost) { showToast("Not enough coins"); return false; }
     setCoins((c) => c - opt.cost);
-    setBuildings((bs) => [...bs, { id: `b${Date.now()}`, type: placingType, pos, district: "main", score: result.score }]);
+    setBuildings((bs) => [...bs, { id: `b${Date.now()}`, type: placingType, pos, district: "main", score: result.score, buildProgress: 0, buildTime: opt.buildDays }]);
     setPlacingType(null);
     showToast(`+${result.score} harmony · ${opt.name} built!`);
     return true;
@@ -408,6 +464,86 @@ export const GameProvider = ({
     }, 900);
   }, []);
 
+  // Derived: group motivation factor (0–1). Used by ticker + UI.
+  const groupMotivation = useMemo(() => {
+    if (agents.length === 0) return 0;
+    const avgMood = agents.reduce((s, a) => s + a.mood, 0) / agents.length;
+    const onlineFrac = agents.filter(a => a.online).length / agents.length;
+    return Math.max(0, (avgMood - 20) / 80) * onlineFrac;
+  }, [agents]);
+
+  // Real-time build ticker — called every ~1s by BuildTicker in the scene
+  // Formula: motFactor = max(0, (avgMood - 20) / 80) × onlineFraction
+  //          progressPerSec = motFactor / (buildTime × 30)
+  const tickBuildings = useCallback((delta: number) => {
+    setBuildings(bs => {
+      const hasUnfinished = bs.some(b => b.buildProgress < 1);
+      if (!hasUnfinished) return bs;
+
+      let anyCompleted = false;
+      const next = bs.map(b => {
+        if (b.buildProgress >= 1) return b;
+        // 1 game-day of progress (at full motivation) = 1/buildTime per day
+        // Real rate: progressPerSec = groupMotivation / (buildTime * GAME_DAY_SECS)
+        const progressPerSec = groupMotivation / (Math.max(1, b.buildTime) * GAME_DAY_SECS);
+        const newProgress = Math.min(1, b.buildProgress + progressPerSec * delta);
+        if (newProgress >= 1 && b.buildProgress < 1) anyCompleted = true;
+        return { ...b, buildProgress: newProgress };
+      });
+
+      if (anyCompleted) {
+        setTimeout(() => showToast("🏗️ Building complete!"), 0);
+      }
+      return next;
+    });
+  }, [groupMotivation, showToast]);
+
+  // ── Shared helper: advance one day and tick building progress ──────────────
+  const advanceDay = useCallback((motOverride?: number) => {
+    const mot = motOverride ?? groupMotivation;
+    setBuildings(bs => {
+      let anyCompleted = false;
+      const next = bs.map(b => {
+        if (b.buildProgress >= 1) return b;
+        const dayProgress = mot / Math.max(1, b.buildTime);
+        const newProgress = Math.min(1, b.buildProgress + dayProgress);
+        if (newProgress >= 1 && b.buildProgress < 1) anyCompleted = true;
+        return { ...b, buildProgress: newProgress };
+      });
+      if (anyCompleted) setTimeout(() => showToast("🏗️ Building complete!"), 50);
+      return next;
+    });
+  }, [groupMotivation, showToast]);
+
+  // Dev controls
+  // ☀️✓ Good day: all goals get done → mood boost, streak up, coins earned
+  const devNextDay = useCallback(() => {
+    setGoals(gs => gs.map(g => ({ ...g, done: true })));
+    setStreak(s => s + 1);
+    setCoins(c => c + 50);
+    setAgents(as => as.map(a => a.isYou ? { ...a, mood: Math.min(100, a.mood + 8) } : a));
+    showToast("☀️ Great day! All goals done · mood +8 · +50 coins");
+    // Reset for tomorrow after toast
+    setTimeout(() => setGoals(gs => gs.map(g => ({ ...g, done: false }))), 400);
+    advanceDay();
+  }, [showToast, advanceDay]);
+
+  // ☀️✗ Bad day: goals not done → mood drops, streak breaks
+  const devNextDayBad = useCallback(() => {
+    setGoals(gs => gs.map(g => ({ ...g, done: false }))); // stays incomplete
+    setStreak(0); // streak breaks
+    setAgents(as => as.map(a => a.isYou ? { ...a, mood: Math.max(10, a.mood - 15) } : a));
+    showToast("😞 Missed goals · mood −15 · streak lost");
+    // Advance day with the now-lower motivation
+    advanceDay(groupMotivation * 0.5); // half progress because motivation dropped
+  }, [showToast, advanceDay, groupMotivation]);
+
+  const devLevelUp = useCallback(() => {
+    setLevel(l => l + 1);
+    setXp(0);
+    showToast("⚡ Level up!");
+  }, [showToast]);
+
   const completeGoal = useCallback((id: string) => {
     setGoals((gs) => gs.map((g) => g.id === id ? { ...g, done: true } : g));
     const g = goals.find((x) => x.id === id);
@@ -418,7 +554,13 @@ export const GameProvider = ({
         const newXp = Math.min(100, xp + 5);
         return newXp >= 100 ? l + 1 : l;
       });
-      showToast(`+${g.reward} coins · ${g.text} ✓`);
+      // Completing a goal boosts your own mood (+6) and gives a small lift to friends (+2)
+      setAgents(as => as.map(a =>
+        a.isYou
+          ? { ...a, mood: Math.min(100, a.mood + 6) }
+          : { ...a, mood: Math.min(100, a.mood + 2) }
+      ));
+      showToast(`+${g.reward} coins · mood +6 🌟 · ${g.text} ✓`);
     }
     setPendingCheckIn(null);
   }, [goals, xp, showToast]);
@@ -449,26 +591,4 @@ export const GameProvider = ({
 
   return (
     <Ctx.Provider value={{
-      screen, setScreen,
-      selectedAgent, setSelectedAgent,
-      coins, streak, level, xp,
-      agents, buildings, scenery, goals,
-      islandEra, islandHistory, isTransitioning, graduateIsland, canGraduate,
-      viewingEra, setViewingEra, isVisiting, visitIsland,
-      placingType, setPlacingType, placeBuildingAt, cancelPlacing,
-      completeGoal, addGoal, editGoal, deleteGoal, pendingCheckIn, setPendingCheckIn,
-      chats, sendChat,
-      toast, showToast,
-      islandName,
-      trackAgent, setTrackAgent,
-    }}>
-      {children}
-    </Ctx.Provider>
-  );
-};
-
-export const useGame = () => {
-  const v = useContext(Ctx);
-  if (!v) throw new Error("useGame must be inside GameProvider");
-  return v;
-};
+     
