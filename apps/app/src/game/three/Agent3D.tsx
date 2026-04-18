@@ -77,6 +77,9 @@ export const Agent3D = ({
   const pos = useRef(new THREE.Vector3(agent.home[0], GROUND_Y, agent.home[1]));
   const angle = useRef(seed * Math.PI * 2);
   const walkCycle = useRef(0);
+  // Accumulated route travel distance — incremented by pace*delta each frame so
+  // mood changes only affect speed going forward, never snap position.
+  const travelRef = useRef(seed * 10); // seed offset so agents start spread out
   // Cumulative offset applied on top of deterministic lerp so agents can slide
   // around obstacles instead of clipping through buildings/scenery.
   const displacement = useRef(new THREE.Vector2(0, 0));
@@ -91,7 +94,7 @@ export const Agent3D = ({
 
   useFrame((_state, delta) => {
     if (!group.current) return;
-    const nowMs = Date.now() + timeOffsetMs;
+    const nowMs = Date.now() + timeOffsetMs; // cosmetic effects only (body sway)
 
     // ── Gossip freeze mode: stop movement, face partner ──
     if (gossipFrozenFacingPos) {
@@ -130,10 +133,8 @@ export const Agent3D = ({
       // ── Normal mode: follow deterministic waypoint route ──
       const route = orderedWaypoints.length > 0 ? orderedWaypoints : [agent.home];
       const routeLen = route.length;
-      const worldTime = nowMs / 1000;
-      const scenicPhase = sceneryCountRef.current * 0.001;
-      const travel = worldTime * pace + seed * routeLen + scenicPhase;
-      const seg = ((travel % routeLen) + routeLen) % routeLen;
+      travelRef.current += pace * delta * 60 * delta;
+      const seg = ((travelRef.current % routeLen) + routeLen) % routeLen;
       const segIdx = Math.floor(seg);
       const nextIdx = (segIdx + 1) % routeLen;
       const routeT = smoothStep(seg - segIdx);
