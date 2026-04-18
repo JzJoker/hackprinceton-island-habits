@@ -20,7 +20,9 @@
     "demo:summary": "tsx scripts/demo-summary.ts",
     "demo:voting": "tsx scripts/demo-voting.ts",
     "demo:ascension": "tsx scripts/demo-ascension.ts",
-    "demo:monument": "tsx scripts/demo-monument.ts"
+    "demo:monument": "tsx scripts/demo-monument.ts",
+    "photon:enhanced": "tsx scripts/test-photon-enhanced.ts",
+    "photon:enhanced:dry": "tsx scripts/test-photon-enhanced.ts --dry"
   },
   "dependencies": {
     "@photon-ai/advanced-imessage": "^0.4.2",

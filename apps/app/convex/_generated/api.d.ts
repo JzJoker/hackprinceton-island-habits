@@ -11,6 +11,7 @@
 import type * as agents from "../agents.js";
 import type * as authMutations from "../authMutations.js";
 import type * as authQueries from "../authQueries.js";
+import type * as buildings from "../buildings.js";
 import type * as goals from "../goals.js";
 import type * as islands from "../islands.js";
 import type * as jobMutations from "../jobMutations.js";
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   agents: typeof agents;
   authMutations: typeof authMutations;
   authQueries: typeof authQueries;
+  buildings: typeof buildings;
   goals: typeof goals;
   islands: typeof islands;
   jobMutations: typeof jobMutations;
