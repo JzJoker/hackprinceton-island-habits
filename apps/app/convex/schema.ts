@@ -48,6 +48,8 @@ export default defineSchema({
     motivation: v.number(),
     reminderVariants: v.array(v.string()),
     createdAt: v.number(),
+    currentActivity: v.optional(v.string()),
+    movementState: v.optional(v.any()),
   })
     .index("by_island", ["islandId"])
     .index("by_island_phone", ["islandId", "phoneNumber"]),
