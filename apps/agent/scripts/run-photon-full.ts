@@ -39,6 +39,7 @@ const PROJECT_ID = process.env.projid;
 const PROJECT_SECRET = process.env.secret;
 const CONVEX_URL = (process.env.CONVEX_URL ?? process.env.VITE_CONVEX_URL ?? "").replace(/\/+$/, "");
 const APP_BASE_URL = (process.env.APP_BASE_URL ?? "http://localhost:5173").replace(/\/+$/, "");
+const BACKEND_URL = (process.env.BACKEND_URL ?? "http://localhost:5001").replace(/\/+$/, "");
 const BOT_PHONE = (process.env.BOT_PHONE ?? "+14155952874").replace(/\D/g, "");
 
 if (!PROJECT_ID || !PROJECT_SECRET) {
@@ -225,9 +226,19 @@ async function handleGoals(space: any, sender: string): Promise<void> {
   await space.send(text(`Your goals on ${island.name}:\n${lines.join("\n")}`));
 }
 
+async function roastGoal(playerName: string, proposedGoal: string): Promise<{ accepted: boolean; message: string }> {
+  const res = await fetch(`${BACKEND_URL}/jobs/roast-goal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ player_name: playerName, proposed_goal: proposedGoal }),
+  });
+  if (!res.ok) throw new Error(`roast-goal HTTP ${res.status}`);
+  return res.json() as Promise<{ accepted: boolean; message: string }>;
+}
+
 async function handleAdd(space: any, sender: string, goalText: string): Promise<void> {
   if (!goalText) {
-    await space.send(text('Usage: /add <goal text>'));
+    await space.send(text("Usage: /add <goal text>"));
     return;
   }
   const island = await resolveSenderIsland(sender);
@@ -235,26 +246,37 @@ async function handleAdd(space: any, sender: string, goalText: string): Promise<
     await space.send(text("I couldn't find an island for you. Run /start first."));
     return;
   }
+
+  // Run goal through K2 roaster before saving
+  let roast: { accepted: boolean; message: string };
+  try {
+    roast = await roastGoal(sender, goalText);
+  } catch (err: any) {
+    console.error("[/add] roast-goal failed, skipping roast:", err?.message ?? err);
+    // Fall through and add the goal anyway if the backend is unreachable
+    roast = { accepted: true, message: "" };
+  }
+
+  if (!roast.accepted) {
+    await space.send(text(roast.message));
+    return;
+  }
+
   await convex.mutation("goals:addGoals" as any, {
     islandId: island._id,
     phoneNumber: sender,
     goals: [goalText],
   });
+
   // Refresh the numbered listing so /drop <n> right after /add works predictably.
   const goals = await fetchGoals(island._id, sender);
   rememberListing(sender, goals);
 
   const count = goals.length;
   const plural = count === 1 ? "" : "s";
-  // Pick a warm flavor message so adds don't all sound the same.
-  const flavors = [
-    `🌱 Planted "${goalText}" on ${island.name}. You're tending ${count} goal${plural} now — the island hums a little louder. ✨`,
-    `🌿 "${goalText}" is taking root. ${count} goal${plural} in your grove. Keep going — I'm rooting for you. 💫`,
-    `☀️ New goal locked in: "${goalText}". That's ${count} for the week. Small steps, real island. 🏝️`,
-    `✨ "${goalText}" added to your list. ${count} goal${plural} alive and glowing. Let's do this. 💪`,
-  ];
-  const msg = flavors[Math.floor(Math.random() * flavors.length)];
-  await space.send(text(msg));
+  const confirmMsg = roast.message ||
+    `🌱 Planted "${goalText}" on ${island.name}. You're tending ${count} goal${plural} now.`;
+  await space.send(text(confirmMsg));
 }
 
 async function handleDrop(space: any, sender: string, index: number): Promise<void> {
