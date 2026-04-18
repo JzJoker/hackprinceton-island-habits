@@ -40,26 +40,16 @@ export const archiveGoal = mutation({
   },
 });
 
-// Edit a goal by archiving the old one and creating a new active goal that
-// references the original via parentGoalId (preserves history).
+// Edit a goal in place. Keeps the same _id, creation time, and any existing
+// check-ins tied to this goal, so the numbered position in /goals is preserved.
 export const editGoal = mutation({
   args: { goalId: v.id("goals"), newText: v.string() },
   async handler(ctx, args) {
-    const oldGoal = await ctx.db.get(args.goalId);
-    if (!oldGoal) throw new Error("Goal not found");
-    await ctx.db.patch(args.goalId, {
-      status: "archived",
-      archivedAt: Date.now(),
-    });
-    const newGoalId = await ctx.db.insert("goals", {
-      islandId: oldGoal.islandId,
-      phoneNumber: oldGoal.phoneNumber,
-      text: args.newText,
-      status: "active",
-      createdAt: Date.now(),
-      parentGoalId: args.goalId,
-    });
-    return await ctx.db.get(newGoalId);
+    const goal = await ctx.db.get(args.goalId);
+    if (!goal) throw new Error("Goal not found");
+    if (goal.status !== "active") throw new Error("Cannot edit an archived goal");
+    await ctx.db.patch(args.goalId, { text: args.newText });
+    return await ctx.db.get(args.goalId);
   },
 });
 

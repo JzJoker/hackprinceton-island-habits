@@ -119,27 +119,23 @@ async function fetchGoals(islandId: string, sender: string): Promise<Goal[]> {
   return await convex.query("goals:getGoals" as any, { islandId, phoneNumber: sender });
 }
 
-// ── Per-sender state for numbered references ─────────────────────────
-// /goals returns a numbered list; /drop 2 and /edit 2 refer back to that list.
-// TTL 15 min so stale numbers don't delete the wrong goal.
+// ── Numbered goal lookup ──────────────────────────────────────────────
+// /drop <n> and /edit <n> fetch goals fresh from Convex and pick the Nth
+// one. Convex is the source of truth, so the numbering matches whatever
+// /goals would currently return — no prior /goals call required.
 
-const listingTtlMs = 15 * 60 * 1000;
-type Listing = { goalIds: string[]; expiresAt: number };
-const lastListing = new Map<string, Listing>();
+type GoalLookup =
+  | { ok: true; island: Island; goal: Goal; goals: Goal[] }
+  | { ok: false; reason: "no-island" | "no-goals" | "out-of-range"; count?: number };
 
-function rememberListing(sender: string, goals: Goal[]): void {
-  lastListing.set(sender, {
-    goalIds: goals.map((g) => g._id),
-    expiresAt: Date.now() + listingTtlMs,
-  });
-}
-
-function recallGoalId(sender: string, index1: number): string | null {
-  const entry = lastListing.get(sender);
-  if (!entry || Date.now() > entry.expiresAt) return null;
+async function lookupGoalByIndex(sender: string, index1: number): Promise<GoalLookup> {
+  const island = await resolveSenderIsland(sender);
+  if (!island) return { ok: false, reason: "no-island" };
+  const goals = await fetchGoals(island._id, sender);
+  if (!goals.length) return { ok: false, reason: "no-goals" };
   const idx = index1 - 1;
-  if (idx < 0 || idx >= entry.goalIds.length) return null;
-  return entry.goalIds[idx];
+  if (idx < 0 || idx >= goals.length) return { ok: false, reason: "out-of-range", count: goals.length };
+  return { ok: true, island, goal: goals[idx], goals };
 }
 
 // ── Command parsing ───────────────────────────────────────────────────
@@ -221,7 +217,6 @@ async function handleGoals(space: any, sender: string): Promise<void> {
     await space.send(text(`No active goals on ${island.name}. Add one with "/add <goal>".`));
     return;
   }
-  rememberListing(sender, goals);
   const lines = goals.map((g, i) => `${i + 1}. ${g.text}`);
   await space.send(text(`Your goals on ${island.name}:\n${lines.join("\n")}`));
 }
@@ -262,9 +257,8 @@ async function handleAdd(space: any, sender: string, goalText: string): Promise<
     goals: [goalText],
   });
 
-  // Refresh the numbered listing so /drop <n> right after /add works predictably.
+  // Fetch the fresh goal list to include the count in the reply.
   const goals = await fetchGoals(island._id, sender);
-  rememberListing(sender, goals);
 
   const count = goals.length;
   const plural = count === 1 ? "" : "s";
@@ -273,14 +267,20 @@ async function handleAdd(space: any, sender: string, goalText: string): Promise<
 }
 
 async function handleDrop(space: any, sender: string, index: number): Promise<void> {
-  const goalId = recallGoalId(sender, index);
-  if (!goalId) {
-    await space.send(text("I don't have a numbered goal list for you. Run /goals first, then /drop <n>."));
+  const lookup = await lookupGoalByIndex(sender, index);
+  if (!lookup.ok) {
+    if (lookup.reason === "no-island") {
+      await space.send(text("I couldn't find an island for you. Run /start first."));
+    } else if (lookup.reason === "no-goals") {
+      await space.send(text("You don't have any active goals to drop yet. Try /add <goal>."));
+    } else {
+      await space.send(text(`Goal ${index} doesn't exist — you have ${lookup.count} goal${lookup.count === 1 ? "" : "s"}. Try /goals to see them.`));
+    }
     return;
   }
   try {
-    await convex.mutation("goals:archiveGoal" as any, { goalId });
-    await space.send(text(`Dropped goal ${index}.`));
+    await convex.mutation("goals:archiveGoal" as any, { goalId: lookup.goal._id });
+    await space.send(text(`🍂 Dropped goal ${index}: "${lookup.goal.text}".`));
   } catch (err: any) {
     console.error("[/drop] failed:", err?.message ?? err);
     await space.send(text("Couldn't drop that goal. It may already be archived."));
@@ -288,14 +288,20 @@ async function handleDrop(space: any, sender: string, index: number): Promise<vo
 }
 
 async function handleEdit(space: any, sender: string, index: number, newText: string): Promise<void> {
-  const goalId = recallGoalId(sender, index);
-  if (!goalId) {
-    await space.send(text("I don't have a numbered goal list for you. Run /goals first, then /edit <n> <new text>."));
+  const lookup = await lookupGoalByIndex(sender, index);
+  if (!lookup.ok) {
+    if (lookup.reason === "no-island") {
+      await space.send(text("I couldn't find an island for you. Run /start first."));
+    } else if (lookup.reason === "no-goals") {
+      await space.send(text("You don't have any active goals to edit yet. Try /add <goal>."));
+    } else {
+      await space.send(text(`Goal ${index} doesn't exist — you have ${lookup.count} goal${lookup.count === 1 ? "" : "s"}. Try /goals to see them.`));
+    }
     return;
   }
   try {
-    await convex.mutation("goals:editGoal" as any, { goalId, newText });
-    await space.send(text(`Goal ${index} is now: "${newText}".`));
+    await convex.mutation("goals:editGoal" as any, { goalId: lookup.goal._id, newText });
+    await space.send(text(`✏️ Goal ${index} updated: "${lookup.goal.text}" → "${newText}".`));
   } catch (err: any) {
     console.error("[/edit] failed:", err?.message ?? err);
     await space.send(text("Couldn't edit that goal."));
