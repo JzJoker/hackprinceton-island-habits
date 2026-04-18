@@ -12,13 +12,13 @@ interface Props {
   scenery: Scenery[];
   onClick: () => void;
   isSelected: boolean;
+  islandRadius?: number;
 }
 
 const AGENT_RADIUS = 0.32;
-const ISLAND_RADIUS = 6.6;
 
 /* ── Chibi-style cozy villager agent ──────────────────── */
-export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelected }: Props) => {
+export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelected, islandRadius = 7.0 }: Props) => {
   const group = useRef<THREE.Group>(null);
   const bodyGroup = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Mesh>(null);
@@ -28,8 +28,11 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
   const [hovered, setHovered] = useState(false);
 
   const seed = useMemo(() => Math.random(), []);
-  const targetIdx = useRef(Math.floor(seed * waypoints.length));
   const GROUND_Y = 0.26;
+
+  // All waypoints are on the single current island
+  const targetIdx = useRef(Math.max(0, Math.floor(seed * waypoints.length)));
+
   const pos = useRef(new THREE.Vector3(agent.home[0], GROUND_Y, agent.home[1]));
   const angle = useRef(seed * Math.PI * 2);
   const idleTimer = useRef(0);
@@ -47,17 +50,21 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
 
   useFrame((_state, delta) => {
     if (!group.current) return;
-    const target = waypoints[targetIdx.current];
+
+    // ── Waypoints on single island ──────────────────────
+    if (!waypoints || waypoints.length === 0) return;
+    const target = waypoints[targetIdx.current % waypoints.length];
     if (!target) return;
+
     const tv = new THREE.Vector3(target[0], GROUND_Y, target[1]);
     const dir = tv.clone().sub(pos.current);
     const distance = dir.length();
-
     const walking = distance > 0.15;
 
     if (!walking) {
       idleTimer.current += delta;
       if (idleTimer.current > 2 + Math.random() * 3) {
+        // Pick new waypoint
         targetIdx.current = Math.floor(Math.random() * waypoints.length);
         idleTimer.current = 0;
       }
@@ -65,7 +72,6 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
       dir.normalize();
       const move = Math.min(distance, speed * delta);
       pos.current.add(dir.multiplyScalar(move));
-      // Smooth rotation
       const targetAngle = Math.atan2(dir.x, dir.z);
       const diff = targetAngle - angle.current;
       const wrapped = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI;
@@ -76,7 +82,6 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
     const repX = { v: 0 }, repZ = { v: 0 };
     const dt = Math.min(delta, 0.05);
 
-    // Repel from buildings
     for (const b of buildingsRef.current) {
       const opt = BUILD_LIBRARY.find((x) => x.type === b.type);
       const bR = (opt?.radius ?? 0.5) + AGENT_RADIUS;
@@ -90,7 +95,6 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
       }
     }
 
-    // Repel from trees & rocks
     for (const s of sceneryRef.current) {
       if (s.type === "flower") continue;
       const sR = (s.type === "tree" ? 0.38 : 0.22) + AGENT_RADIUS;
@@ -107,14 +111,19 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
     pos.current.x += repX.v * dt;
     pos.current.z += repZ.v * dt;
 
-    // Clamp within island bounds
-    const distFromCenter = Math.hypot(pos.current.x, pos.current.z);
-    if (distFromCenter > ISLAND_RADIUS) {
-      pos.current.x = (pos.current.x / distFromCenter) * ISLAND_RADIUS;
-      pos.current.z = (pos.current.z / distFromCenter) * ISLAND_RADIUS;
+    // ── Hard clamp to island zone ────────────────────────
+    // Agent can NEVER leave the island (no water walking).
+    {
+      const dx = pos.current.x;
+      const dz = pos.current.z;
+      const d = Math.hypot(dx, dz);
+      if (d > islandRadius) {
+        pos.current.x = (dx / d) * islandRadius;
+        pos.current.z = (dz / d) * islandRadius;
+      }
     }
 
-    // Stuck detection — pick a new waypoint if barely moving for 3 seconds
+    // ── Stuck detection ──────────────────────────────────
     stuckTimer.current += delta;
     if (stuckTimer.current > 3) {
       const moved = pos.current.distanceTo(lastPos.current);

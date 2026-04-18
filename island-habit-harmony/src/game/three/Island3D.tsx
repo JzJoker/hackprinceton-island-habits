@@ -2,7 +2,7 @@ import { useContext, useRef, useMemo } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Sky, Cloud, Clouds, Environment, ContactShadows, Float } from "@react-three/drei";
 import * as THREE from "three";
-import { useGame, GameCtx } from "../state";
+import { useGame, GameCtx, ISLAND_TIERS } from "../state";
 import { Building3D } from "./Building3D";
 import { Agent3D } from "./Agent3D";
 import { SceneryRenderer, GrassTuft } from "./Scenery3D";
@@ -10,7 +10,7 @@ import { DistrictsRenderer } from "./Districts3D";
 import { PlacementGhost } from "./PlacementGhost";
 
 /* ── Animated ocean water with vertex wave displacement ─ */
-const Water = () => {
+const Water = ({ color }: { color: string }) => {
   const ref = useRef<THREE.Mesh>(null);
   const ref2 = useRef<THREE.Mesh>(null);
   const originalPositions = useRef<Float32Array | null>(null);
@@ -24,7 +24,7 @@ const Water = () => {
 
   const waterMat = useMemo(() => {
     return new THREE.MeshStandardMaterial({
-      color: new THREE.Color("#3B8EBF"),
+      color: new THREE.Color(color),
       transparent: true,
       opacity: 0.82,
       metalness: 0.4,
@@ -32,7 +32,8 @@ const Water = () => {
       envMapIntensity: 1.3,
       flatShading: false,
     });
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [color]);
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
@@ -144,8 +145,9 @@ const Particles = () => {
   );
 };
 
-/* ── Agent waypoints — spread across the larger main island ── */
+/* ── Agent waypoints — single island at [0,0] ────────── */
 const WAYPOINTS: [number, number][] = [
+  // ── Pine Hollow (main) ──────────────────────────────
   [-2.5,  1.2],
   [ 2.0, -1.0],
   [ 1.0,  3.0],
@@ -165,19 +167,20 @@ const WAYPOINTS: [number, number][] = [
 
 /* ── Main scene ──────────────────────────────────────── */
 const Scene = () => {
-  const { agents, buildings, scenery, selectedAgent, setSelectedAgent, setScreen, placingType } = useGame();
+  const { agents, buildings, scenery, selectedAgent, setSelectedAgent, setScreen, placingType, islandEra } = useGame();
+  const tier = ISLAND_TIERS[islandEra];
 
   return (
     <>
       {/* Sky & atmosphere */}
       <Sky
-        sunPosition={[10, 5, 4]}
-        turbidity={1.8}
-        rayleigh={0.8}
+        sunPosition={tier.sunPos}
+        turbidity={tier.skyTurbidity}
+        rayleigh={tier.skyRayleigh}
         mieCoefficient={0.003}
         mieDirectionalG={0.92}
       />
-      <fog attach="fog" args={["#C8DFF0", 28, 70]} />
+      <fog attach="fog" args={[tier.fogColor, 28, 70]} />
       <Environment preset="park" environmentIntensity={0.4} />
 
       {/* Lighting — warm key, cool fill, rim */}
@@ -215,7 +218,7 @@ const Scene = () => {
       </Clouds>
 
       {/* Water */}
-      <Water />
+      <Water color={tier.waterColor} />
 
       {/* Contact shadows — soft ground shadows */}
       <ContactShadows
@@ -244,6 +247,7 @@ const Scene = () => {
           waypoints={WAYPOINTS}
           buildings={buildings}
           scenery={scenery}
+          islandRadius={tier.radius}
           isSelected={selectedAgent === a.id}
           onClick={() => {
             if (placingType) return;
@@ -260,6 +264,8 @@ const Scene = () => {
 /* ── Canvas wrapper ──────────────────────────────────── */
 export const Island3D = () => {
   const game = useContext(GameCtx);
+  const isPlacing = !!game?.placingType;
+
   return (
     <Canvas
       shadows
@@ -280,7 +286,7 @@ export const Island3D = () => {
           minPolarAngle={Math.PI / 6}
           maxPolarAngle={Math.PI / 2.3}
           target={[0, 0.5, 0]}
-          autoRotate
+          autoRotate={!isPlacing}
           autoRotateSpeed={0.22}
           enableDamping
           dampingFactor={0.08}

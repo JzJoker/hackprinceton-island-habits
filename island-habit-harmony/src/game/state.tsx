@@ -10,6 +10,24 @@ export type ScreenId = "island" | "build" | "chat" | "recap" | "history" | "chec
 export type BuildingType = "house" | "garden" | "library" | "gym" | "lighthouse" | "fountain" | "bonfire" | "cabin" | "dock" | "shrine" | "windmill" | "treehouse";
 export type DistrictId = "main" | "forest" | "beach" | "hill";
 
+export const ISLAND_TIERS = [
+  { era: 0, name: "Pine Hollow",    emoji: "🌿", environment: "spring",   unlockLevel: 0,  radius: 7.0,  fogColor: "#C8DFF0", skyTurbidity: 1.8, skyRayleigh: 0.8,  waterColor: "#3B8EBF", sunPos: [10,5,4] as [number,number,number], description: "Your first island — fresh grass and gentle breeze." },
+  { era: 1, name: "Amber Ridge",    emoji: "🍂", environment: "autumn",   unlockLevel: 10, radius: 8.5,  fogColor: "#D4A882", skyTurbidity: 3.5, skyRayleigh: 0.4,  waterColor: "#4A7A9B", sunPos: [6,2,8]  as [number,number,number], description: "Golden harvest warmth. A bigger canvas awaits." },
+  { era: 2, name: "Frostpeak Isle", emoji: "❄️", environment: "winter",   unlockLevel: 20, radius: 10.0, fogColor: "#C0D4E8", skyTurbidity: 0.8, skyRayleigh: 1.4,  waterColor: "#2A5878", sunPos: [4,3,10] as [number,number,number], description: "Snow-dusted peaks, crisp silence." },
+  { era: 3, name: "Coral Cove",     emoji: "🌺", environment: "tropical", unlockLevel: 30, radius: 12.0, fogColor: "#A8D8E8", skyTurbidity: 1.2, skyRayleigh: 1.6,  waterColor: "#1A6B8B", sunPos: [8,8,2]  as [number,number,number], description: "Lush tropics, perpetual summer." },
+] as const;
+export type IslandEra = typeof ISLAND_TIERS[number];
+
+export interface IslandSnapshot {
+  era: number;
+  name: string;
+  emoji: string;
+  buildings: Building[];
+  level: number;
+  coinsEarned: number;
+  graduatedAt: string;
+}
+
 export interface Agent {
   id: AgentId;
   name: string;
@@ -123,17 +141,20 @@ interface GameState {
   agents: Agent[];
   buildings: Building[];
   scenery: Scenery[];
-  districts: District[];
   goals: Goal[];
+
+  // Island era / graduation
+  islandEra: number;
+  islandHistory: IslandSnapshot[];
+  isTransitioning: boolean;
+  graduateIsland: () => void;
+  canGraduate: boolean;
 
   // Free-placement build flow
   placingType: BuildingType | null;
   setPlacingType: (t: BuildingType | null) => void;
   placeBuildingAt: (pos: [number, number], rot?: number) => boolean;
   cancelPlacing: () => void;
-
-  // Districts
-  unlockDistrict: (id: DistrictId) => boolean;
 
   completeGoal: (id: string) => void;
   addGoal: (text: string, reward: number, photo?: boolean) => void;
@@ -151,16 +172,16 @@ const Ctx = createContext<GameState | null>(null);
 export const GameCtx = Ctx;
 
 const initialAgents: Agent[] = [
-  { id: "sofia",  name: "Sofia",  img: a5, skin: "#F4D7B5", shirt: "#7AC5A0", pants: "#3A4A6B", hair: "#3B2820", hairStyle: "long",  mood: 76, line: "Hydrating!",         goal: "2L water", online: true, isYou: true, home: [ 0.5, -1.2] },
-  { id: "kael",   name: "Kael",   img: a1, skin: "#E8C29A", shirt: "#6FA8DC", pants: "#2A3550", hair: "#1F1410", hairStyle: "cap",   mood: 84, line: "Let's lift today!", goal: "Gym 45m",  online: true,              home: [-2.5, -0.5] },
-  { id: "theo",   name: "Theo",   img: a2, skin: "#F4D7B5", shirt: "#C9A0E0", pants: "#5A4030", hair: "#5A3820", hairStyle: "short", mood: 62, line: "Reading slowly...", goal: "Read 15p", online: true,              home: [ 2.0,  1.5] },
-  { id: "mei",    name: "Mei",    img: a3, skin: "#EFC9A0", shirt: "#E58F7B", pants: "#3A2A40", hair: "#0F0A08", hairStyle: "bun",   mood: 41, line: "Need a walk.",      goal: "Walk 20m", online: false,             home: [-1.0,  2.0] },
-  { id: "jordan", name: "Jordan", img: a4, skin: "#D9A878", shirt: "#F2C46C", pants: "#3A2A1A", hair: "#2A1810", hairStyle: "short", mood: 91, line: "On a roll!",        goal: "Sleep 8h", online: true,              home: [ 1.5, -2.0] },
+  { id: "sofia",  name: "Sofia",  img: a5, skin: "#F4D7B5", shirt: "#7AC5A0", pants: "#3A4A6B", hair: "#3B2820", hairStyle: "long",  mood: 76, line: "Hydrating!",         goal: "2L water", online: true, isYou: true, home: [  0.5,  -1.2] },
+  { id: "kael",   name: "Kael",   img: a1, skin: "#E8C29A", shirt: "#6FA8DC", pants: "#2A3550", hair: "#1F1410", hairStyle: "cap",   mood: 84, line: "Let's lift today!", goal: "Gym 45m",  online: true,              home: [ -2.5,  -0.5] },
+  { id: "theo",   name: "Theo",   img: a2, skin: "#F4D7B5", shirt: "#C9A0E0", pants: "#5A4030", hair: "#5A3820", hairStyle: "short", mood: 62, line: "Reading slowly...", goal: "Read 15p", online: true,              home: [  2.0,   1.5] },
+  { id: "mei",    name: "Mei",    img: a3, skin: "#EFC9A0", shirt: "#E58F7B", pants: "#3A2A40", hair: "#0F0A08", hairStyle: "bun",   mood: 41, line: "Need a walk.",      goal: "Walk 20m", online: false,             home: [ -1.0,   2.0] },
+  { id: "jordan", name: "Jordan", img: a4, skin: "#D9A878", shirt: "#F2C46C", pants: "#3A2A1A", hair: "#2A1810", hairStyle: "short", mood: 91, line: "On a roll!",        goal: "Sleep 8h", online: true,              home: [  1.5,  -2.0] },
 ];
 
 const initialBuildings: Building[] = [];
 
-// Pre-seeded scenery for the main island & previewing districts
+// Pre-seeded scenery for the main island
 const initialScenery: Scenery[] = [
   // main island trees
   { id: "t1", type: "tree", pos: [ 2.7,  1.9], district: "main", variant: 0 },
@@ -212,18 +233,14 @@ export const scorePlacement = (
   pos: [number, number],
   buildings: Building[],
   scenery: Scenery[],
-  districts: District[],
+  islandRadius: number = 7.0,
 ): { score: number; valid: boolean; reason?: string; breakdown: { label: string; pts: number }[] } => {
   const opt = BUILD_LIBRARY.find((b) => b.type === type);
   if (!opt) return { score: 0, valid: false, reason: "Unknown", breakdown: [] };
 
-  // Must be on land of the right district (or any unlocked district for "main"-tagged buildings)
-  const dId = districtAt(pos, districts);
-  if (!dId) return { score: 0, valid: false, reason: "Outside island", breakdown: [] };
-
-  // Building-specific district (lighthouse/dock → beach, cabin → forest, shrine → hill)
-  if (opt.district !== "main" && opt.district !== dId) {
-    return { score: 0, valid: false, reason: `Only fits in ${opt.district}`, breakdown: [] };
+  // Must be within island radius
+  if (Math.hypot(pos[0], pos[1]) > islandRadius) {
+    return { score: 0, valid: false, reason: "Outside island", breakdown: [] };
   }
 
   // Collision check
@@ -243,12 +260,12 @@ export const scorePlacement = (
       if (r.type === "tree" || r.type === "rock" || r.type === "flower") {
         count = scenery.filter((s) => s.type === r.type && dist(s.pos, pos) <= r.range).length;
       } else if (r.type === "water") {
-        // water = anywhere outside any unlocked district
+        // water = anywhere near island edge
         const samples = 8;
         for (let i = 0; i < samples; i++) {
           const a = (i / samples) * Math.PI * 2;
           const sp: [number, number] = [pos[0] + Math.cos(a) * r.range, pos[1] + Math.sin(a) * r.range];
-          if (!districtAt(sp, districts)) { count++; break; }
+          if (Math.hypot(sp[0], sp[1]) > islandRadius) { count++; break; }
         }
       } else {
         count = buildings.filter((b) => b.type === r.type && dist(b.pos, pos) <= r.range).length;
@@ -271,49 +288,67 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const [selectedAgent, setSelectedAgent] = useState<AgentId>("sofia");
   const [coins, setCoins] = useState(2486);
   const [streak] = useState(12);
-  const [level] = useState(14);
+  const [level, setLevel] = useState(14);
   const [xp, setXp] = useState(72);
   const [agents] = useState<Agent[]>(initialAgents);
   const [buildings, setBuildings] = useState<Building[]>(initialBuildings);
   const [scenery] = useState<Scenery[]>(initialScenery);
-  const [districts, setDistricts] = useState<District[]>(DISTRICTS);
   const [goals, setGoals] = useState<Goal[]>(initialGoals);
   const [placingType, setPlacingType] = useState<BuildingType | null>(null);
   const [pendingCheckIn, setPendingCheckIn] = useState<Goal | null>(null);
   const [chats, setChats] = useState<Record<AgentId, ChatMsg[]>>(seedChats);
   const [toast, setToast] = useState<string | null>(null);
 
+  // Island era state
+  const [islandEra, setIslandEra] = useState(0);
+  const [islandHistory, setIslandHistory] = useState<IslandSnapshot[]>([]);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2400);
   }, []);
 
+  const graduateIsland = useCallback(() => {
+    const next = ISLAND_TIERS[islandEra + 1];
+    if (!next) return;
+    if (level < next.unlockLevel) { showToast(`Need Lv.${next.unlockLevel}`); return; }
+    // Save snapshot
+    setIslandHistory(h => [...h, {
+      era: islandEra,
+      name: ISLAND_TIERS[islandEra].name,
+      emoji: ISLAND_TIERS[islandEra].emoji,
+      buildings,
+      level,
+      coinsEarned: coins,
+      graduatedAt: new Date().toISOString(),
+    }]);
+    // Transition animation
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setIslandEra(islandEra + 1);
+      setBuildings([]);
+      setScreen(null);
+      setIsTransitioning(false);
+      showToast(`🏝️ Welcome to ${next.name}!`);
+    }, 1200);
+  }, [islandEra, buildings, level, coins, showToast]);
+
   const placeBuildingAt = useCallback((pos: [number, number]): boolean => {
     if (!placingType) return false;
     const opt = BUILD_LIBRARY.find((b) => b.type === placingType)!;
-    const result = scorePlacement(placingType, pos, buildings, scenery, districts);
+    const currentRadius = ISLAND_TIERS[islandEra].radius;
+    const result = scorePlacement(placingType, pos, buildings, scenery, currentRadius);
     if (!result.valid) { showToast(result.reason || "Can't place here"); return false; }
     if (coins < opt.cost) { showToast("Not enough coins"); return false; }
-    const dId = districtAt(pos, districts)!;
     setCoins((c) => c - opt.cost);
-    setBuildings((bs) => [...bs, { id: `b${Date.now()}`, type: placingType, pos, district: dId, score: result.score }]);
+    setBuildings((bs) => [...bs, { id: `b${Date.now()}`, type: placingType, pos, district: "main", score: result.score }]);
     setPlacingType(null);
     showToast(`+${result.score} harmony · ${opt.name} built!`);
     return true;
-  }, [placingType, buildings, scenery, districts, coins, showToast]);
+  }, [placingType, buildings, scenery, coins, islandEra, showToast]);
 
   const cancelPlacing = useCallback(() => setPlacingType(null), []);
-
-  const unlockDistrict = useCallback((id: DistrictId): boolean => {
-    const d = districts.find((x) => x.id === id);
-    if (!d || d.unlocked) return false;
-    if (level < d.unlockLevel) { showToast(`Need Lv.${d.unlockLevel}`); return false; }
-    if (coins < d.unlockCost) { showToast("Not enough coins"); return false; }
-    setCoins((c) => c - d.unlockCost);
-    setDistricts((ds) => ds.map((x) => x.id === id ? { ...x, unlocked: true } : x));
-    showToast(`${d.emoji} ${d.name} unlocked!`);
-    return true;
-  }, [districts, level, coins, showToast]);
 
   const completeGoal = useCallback((id: string) => {
     setGoals((gs) => gs.map((g) => g.id === id ? { ...g, done: true } : g));
@@ -321,10 +356,14 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     if (g && !g.done) {
       setCoins((c) => c + g.reward);
       setXp((x) => Math.min(100, x + 5));
+      setLevel((l) => {
+        const newXp = Math.min(100, xp + 5);
+        return newXp >= 100 ? l + 1 : l;
+      });
       showToast(`+${g.reward} coins · ${g.text} ✓`);
     }
     setPendingCheckIn(null);
-  }, [goals, showToast]);
+  }, [goals, xp, showToast]);
 
   const addGoal = useCallback((text: string, reward: number, photo?: boolean) => {
     setGoals((gs) => [...gs, { id: `g${Date.now()}`, text, done: false, reward, photo: photo ?? false }]);
@@ -348,14 +387,16 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     }, 900);
   }, []);
 
+  const canGraduate = !!ISLAND_TIERS[islandEra + 1] && level >= ISLAND_TIERS[islandEra + 1].unlockLevel;
+
   return (
     <Ctx.Provider value={{
       screen, setScreen,
       selectedAgent, setSelectedAgent,
       coins, streak, level, xp,
-      agents, buildings, scenery, districts, goals,
+      agents, buildings, scenery, goals,
+      islandEra, islandHistory, isTransitioning, graduateIsland, canGraduate,
       placingType, setPlacingType, placeBuildingAt, cancelPlacing,
-      unlockDistrict,
       completeGoal, addGoal, editGoal, deleteGoal, pendingCheckIn, setPendingCheckIn,
       chats, sendChat,
       toast, showToast,

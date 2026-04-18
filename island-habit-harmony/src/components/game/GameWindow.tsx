@@ -10,6 +10,16 @@ import { CheckInOverlay } from "@/game/overlays/CheckInOverlay";
 import { ExpandOverlay } from "@/game/overlays/ExpandOverlay";
 import { PartyOverlay } from "@/game/overlays/PartyOverlay";
 import { ToastLayer } from "@/game/overlays/ToastLayer";
+import { MobilePlacingHUD } from "./MobilePlacingHUD";
+import { useGame } from "@/game/state";
+
+const TransitionOverlay = () => {
+  const { isTransitioning } = useGame();
+  if (!isTransitioning) return null;
+  return (
+    <div className="absolute inset-0 z-[150] bg-black pointer-events-none animate-in fade-in duration-500" />
+  );
+};
 
 export const GameWindow = () => (
   <div className="game-window w-full h-full relative overflow-hidden">
@@ -40,6 +50,11 @@ export const GameWindow = () => (
         <ActionDock />
       </div>
 
+      {/* Layer 1.5 — Mobile placement HUD (crosshair + place button) */}
+      <div className="absolute inset-0 z-20 pointer-events-none">
+        <MobilePlacingHUD />
+      </div>
+
       {/* Layer 2 — Modal overlays (highest, above EVERYTHING) */}
       <div className="absolute inset-0 z-[100] pointer-events-none" style={{ isolation: "isolate" }}>
         <PartyOverlay />
@@ -49,6 +64,9 @@ export const GameWindow = () => (
         <CheckInOverlay />
         <ExpandOverlay />
       </div>
+
+      {/* Transition overlay — shown during island graduation */}
+      <TransitionOverlay />
 
       {/* Layer 3 — Toast notifications (topmost) */}
       <div className="absolute inset-0 z-[200] pointer-events-none">

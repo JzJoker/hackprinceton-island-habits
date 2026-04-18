@@ -12,13 +12,13 @@ export const RecapOverlay = () => {
 
   return (
     <div
-      className={`absolute inset-0 z-50 flex items-center justify-center p-8 pointer-events-auto
+      className={`absolute inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-8 pointer-events-auto
         bg-black/40 backdrop-blur-sm
         ${closing ? "animate-out fade-out duration-150" : "animate-in fade-in duration-200"}`}
       onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}
     >
-      <div className={`hud-panel max-w-2xl w-full max-h-[85%] flex flex-col overflow-hidden
-        ${closing ? "animate-out zoom-out-95 duration-150" : "animate-in zoom-in-95 duration-300"}`}>
+      <div className={`hud-panel max-w-2xl w-full max-h-[90vh] sm:max-h-[85%] flex flex-col overflow-hidden rounded-t-3xl sm:rounded-2xl
+        ${closing ? "animate-out slide-out-to-bottom sm:zoom-out-95 duration-150" : "animate-in slide-in-from-bottom sm:zoom-in-95 duration-300"}`}>
 
         <header className="flex items-center justify-between p-4 border-b border-foreground/10">
           <div className="flex items-center gap-2">

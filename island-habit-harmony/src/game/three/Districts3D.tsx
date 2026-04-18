@@ -3,7 +3,7 @@ import { Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { District } from "../state";
-import { useGame } from "../state";
+import { useGame, ISLAND_TIERS, DISTRICTS } from "../state";
 
 /* ── Bumpy terrain disc using deformed cylinder ─────── */
 const BumpyTerrain = ({
@@ -343,38 +343,23 @@ const LockedGhost = ({ d, onClick }: { d: District; onClick: () => void }) => (
   </group>
 );
 
-/* ── Districts renderer ──────────────────────────────── */
+/* ── Districts renderer — single island era ──────────── */
 export const DistrictsRenderer = () => {
-  const { districts, setScreen } = useGame();
-  const main = districts.find((d) => d.id === "main")!;
+  const { islandEra } = useGame();
+  const tier = ISLAND_TIERS[islandEra];
+
+  // Build a District-compatible object from the current island tier
+  const mainDistrict: District = {
+    ...DISTRICTS[0],
+    name: tier.name,
+    radius: tier.radius,
+    color: DISTRICTS[0].color,
+    unlocked: true,
+  };
 
   return (
     <>
-      {districts.map((d) =>
-        d.unlocked ? (
-          <DistrictLand key={d.id} d={d} />
-        ) : (
-          <LockedGhost key={d.id} d={d} onClick={() => setScreen("expand")} />
-        ),
-      )}
-      {districts
-        .filter((d) => d.unlocked && d.id !== "main")
-        .map((d) => {
-          const dx = d.center[0] - main.center[0];
-          const dz = d.center[1] - main.center[1];
-          const len = Math.hypot(dx, dz);
-          const ux = dx / len;
-          const uz = dz / len;
-          const from: [number, number] = [
-            main.center[0] + ux * (main.radius - 0.2),
-            main.center[1] + uz * (main.radius - 0.2),
-          ];
-          const to: [number, number] = [
-            d.center[0] - ux * (d.radius - 0.2),
-            d.center[1] - uz * (d.radius - 0.2),
-          ];
-          return <Bridge key={d.id} from={from} to={to} />;
-        })}
+      <DistrictLand d={mainDistrict} />
     </>
   );
 };

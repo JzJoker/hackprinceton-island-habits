@@ -3,7 +3,7 @@ import { useGame, BUILD_LIBRARY } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 
 export const BuildOverlay = () => {
-  const { screen, setScreen, coins, setPlacingType, placingType, districts } = useGame();
+  const { screen, setScreen, coins, setPlacingType, placingType } = useGame();
   const { closing, close } = useOverlayClose(() => setScreen(null));
 
   if (screen !== "build" && !closing) return null;
@@ -12,22 +12,18 @@ export const BuildOverlay = () => {
     const opt = BUILD_LIBRARY.find((b) => b.type === type)!;
     if (opt.locked) return;
     if (coins < opt.cost) return;
-    if (opt.district !== "main") {
-      const d = districts.find((x) => x.id === opt.district);
-      if (!d || !d.unlocked) return;
-    }
     setPlacingType(type);
     setScreen(null);
   };
 
   return (
     <div
-      className={`absolute inset-0 z-50 flex items-center justify-center p-6 bg-foreground/50 backdrop-blur-md pointer-events-auto
+      className={`absolute inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6 bg-foreground/50 backdrop-blur-md pointer-events-auto
         ${closing ? "animate-out fade-out duration-150" : "animate-in fade-in duration-200"}`}
       onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}
     >
-      <div className={`hud-panel max-w-3xl w-full max-h-[88%] flex flex-col overflow-hidden
-        ${closing ? "animate-out zoom-out-95 duration-150" : "animate-in zoom-in-95 duration-300"}`}>
+      <div className={`hud-panel max-w-3xl w-full max-h-[92vh] sm:max-h-[88%] flex flex-col overflow-hidden rounded-t-3xl sm:rounded-2xl
+        ${closing ? "animate-out slide-out-to-bottom sm:zoom-out-95 duration-150" : "animate-in slide-in-from-bottom sm:zoom-in-95 duration-300"}`}>
 
         {/* Header */}
         <header className="relative flex items-center justify-between p-4 border-b border-foreground/10 bg-gradient-to-r from-primary-soft/60 via-secondary-soft/40 to-honey-soft/50">
@@ -59,10 +55,9 @@ export const BuildOverlay = () => {
         {/* Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 overflow-y-auto bg-gradient-to-b from-background to-secondary-soft/20">
           {BUILD_LIBRARY.map((b) => {
-            const districtLocked = b.district !== "main" && !districts.find((x) => x.id === b.district)?.unlocked;
-            const locked = !!b.locked || districtLocked;
+            const locked = !!b.locked;
             const tooExpensive = !locked && coins < b.cost;
-            const lockReason = b.locked || (districtLocked ? `Unlock ${b.district}` : null);
+            const lockReason = b.locked || null;
             const isPlacing = placingType === b.type;
             const tier = b.cost < 150 ? "common" : b.cost < 300 ? "rare" : b.cost < 600 ? "epic" : "legendary";
             const tierStyle = {
