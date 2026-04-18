@@ -3,10 +3,10 @@ import { v } from "convex/values";
 
 export default defineSchema({
   islands: defineTable({
-    code: v.string(),
+    code: v.string(), // Unique game code (4-6 chars)
     name: v.string(),
     status: v.union(v.literal("onboarding"), v.literal("active"), v.literal("ascended")),
-    tier: v.number(),
+    tier: v.number(), // Starting at 1
     islandLevel: v.number(),
     xp: v.number(),
     currency: v.number(),
@@ -15,17 +15,19 @@ export default defineSchema({
       width: v.number(),
       height: v.number(),
     }),
-    phoneNumbers: v.array(v.string()),
+    phoneNumbers: v.array(v.string()), // Group member phone numbers from Photon
     createdAt: v.number(),
     ascendedAt: v.optional(v.number()),
-  }).index("by_code", ["code"]),
+  })
+    .index("by_code", ["code"]),
 
   users: defineTable({
     phoneNumber: v.string(),
     displayName: v.optional(v.string()),
     createdAt: v.number(),
     lastLoginAt: v.optional(v.number()),
-  }).index("by_phone", ["phoneNumber"]),
+  })
+    .index("by_phone", ["phoneNumber"]),
 
   islandMembers: defineTable({
     islandId: v.id("islands"),
@@ -39,9 +41,9 @@ export default defineSchema({
   agents: defineTable({
     islandId: v.id("islands"),
     phoneNumber: v.string(),
-    personalityProfile: v.string(),
-    motivation: v.number(),
-    reminderVariants: v.array(v.string()),
+    personalityProfile: v.string(), // JSON or text description
+    motivation: v.number(), // 0-100
+    reminderVariants: v.array(v.string()), // Pre-generated reminders
     createdAt: v.number(),
   })
     .index("by_island", ["islandId"])
@@ -54,7 +56,7 @@ export default defineSchema({
     status: v.union(v.literal("active"), v.literal("archived")),
     createdAt: v.number(),
     archivedAt: v.optional(v.number()),
-    parentGoalId: v.optional(v.id("goals")),
+    parentGoalId: v.optional(v.id("goals")), // For edited versions
   })
     .index("by_island", ["islandId"])
     .index("by_island_phone", ["islandId", "phoneNumber"]),
@@ -63,7 +65,7 @@ export default defineSchema({
     goalId: v.id("goals"),
     phoneNumber: v.string(),
     islandId: v.id("islands"),
-    date: v.string(),
+    date: v.string(), // YYYY-MM-DD
     completed: v.boolean(),
     createdAt: v.number(),
   })
@@ -80,12 +82,13 @@ export default defineSchema({
       height: v.number(),
     }),
     state: v.union(v.literal("constructing"), v.literal("complete"), v.literal("damaged")),
-    buildProgress: v.number(),
+    buildProgress: v.number(), // 0-1
     costPaid: v.number(),
-    placedBy: v.string(),
+    placedBy: v.string(), // phoneNumber
     placedAt: v.number(),
     completedAt: v.optional(v.number()),
-  }).index("by_island", ["islandId"]),
+  })
+    .index("by_island", ["islandId"]),
 
   events: defineTable({
     islandId: v.id("islands"),
@@ -103,9 +106,10 @@ export default defineSchema({
       v.literal("goal_edit"),
       v.literal("goal_delete")
     ),
-    payload: v.any(),
+    payload: v.any(), // Flexible JSON
     timestamp: v.number(),
-  }).index("by_island", ["islandId"]),
+  })
+    .index("by_island", ["islandId"]),
 
   aiMessages: defineTable({
     agentId: v.id("agents"),
@@ -113,5 +117,6 @@ export default defineSchema({
     content: v.string(),
     context: v.optional(v.string()),
     sentAt: v.number(),
-  }).index("by_agent", ["agentId"]),
+  })
+    .index("by_agent", ["agentId"]),
 });
