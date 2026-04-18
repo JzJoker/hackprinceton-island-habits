@@ -1,7 +1,7 @@
 import { useContext, useRef, useMemo, useState, useCallback } from "react";
 import type { MutableRefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Environment, Float } from "@react-three/drei";
+import { OrbitControls, Environment, Float, Cloud, Clouds } from "@react-three/drei";
 import { EffectComposer, Pixelation, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
@@ -15,27 +15,34 @@ import { PlacementGhost } from "./PlacementGhost";
 
 /* ── Gradient skydome (A Short Hike-inspired palette) ─ */
 const SkyDome = () => {
+  const domeRef = useRef<THREE.Mesh>(null);
   const uniforms = useMemo(
     () => ({
-      topColor: { value: new THREE.Color("#d4ecff") },
-      middleColor: { value: new THREE.Color("#bfe1ff") },
-      horizonColor: { value: new THREE.Color("#a9d6ff") },
+      topColor: { value: new THREE.Color("#beddff") },
+      middleColor: { value: new THREE.Color("#ffd8b7") },
+      horizonColor: { value: new THREE.Color("#ffae93") },
+      glowColor: { value: new THREE.Color("#fff0d8") },
     }),
     [],
   );
 
+  useFrame(({ camera }) => {
+    if (!domeRef.current) return;
+    domeRef.current.position.copy(camera.position);
+  });
+
   return (
-    <mesh>
-      <sphereGeometry args={[500, 40, 20]} />
+    <mesh ref={domeRef} frustumCulled={false}>
+      <sphereGeometry args={[90, 48, 24]} />
       <shaderMaterial
         side={THREE.BackSide}
         depthWrite={false}
         uniforms={uniforms}
         vertexShader={`
-          varying float vY;
+          varying float vH;
           void main() {
-            vec4 worldPos = modelMatrix * vec4(position, 1.0);
-            vY = worldPos.y;
+            vec3 dir = normalize(position);
+            vH = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
             gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
           }
         `}
@@ -43,12 +50,15 @@ const SkyDome = () => {
           uniform vec3 topColor;
           uniform vec3 middleColor;
           uniform vec3 horizonColor;
-          varying float vY;
+          uniform vec3 glowColor;
+          varying float vH;
           void main() {
-            float h = clamp((vY + 500.0) / 1000.0, 0.0, 1.0);
-            vec3 low  = mix(horizonColor, middleColor, smoothstep(0.04, 0.34, h));
-            vec3 high = mix(middleColor,  topColor,    smoothstep(0.24, 1.0,  h));
-            vec3 color = mix(low, high, smoothstep(0.12, 0.88, h));
+            float h = vH;
+            vec3 low = mix(horizonColor, middleColor, smoothstep(0.02, 0.36, h));
+            vec3 high = mix(middleColor, topColor, smoothstep(0.30, 1.0, h));
+            vec3 color = mix(low, high, smoothstep(0.12, 0.90, h));
+            float horizonGlow = smoothstep(0.34, 0.53, h) * (1.0 - smoothstep(0.60, 0.80, h));
+            color += glowColor * horizonGlow * 0.28;
             gl_FragColor = vec4(color, 1.0);
           }
         `}
@@ -57,54 +67,57 @@ const SkyDome = () => {
   );
 };
 
-/* ── Solid low-poly cloud clusters placed high above island ─ */
-const SolidCloud = ({
-  position,
-  scale = 1,
-  color = "#fff3df",
-}: {
-  position: [number, number, number];
-  scale?: number;
-  color?: string;
-}) => {
-  const blobs = useMemo<[number, number, number, number][]>(
-    () => [
-      [0.0, 0.0, 0.0, 1.0],
-      [0.9, 0.15, -0.2, 0.82],
-      [-0.95, 0.05, 0.1, 0.76],
-      [0.25, 0.45, 0.55, 0.65],
-      [-0.35, 0.38, -0.55, 0.62],
-    ],
-    [],
-  );
-
-  return (
-    <group position={position} scale={scale}>
-      {blobs.map(([x, y, z, s], idx) => (
-        <mesh key={idx} position={[x, y, z]} castShadow={false} receiveShadow={false}>
-          <icosahedronGeometry args={[s, 0]} />
-          <meshStandardMaterial color={color} roughness={0.9} metalness={0.02} flatShading />
-        </mesh>
-      ))}
-    </group>
-  );
-};
-
 const CloudLayer = () => (
-  <group>
-    <Float speed={0.18} rotationIntensity={0.02} floatIntensity={0.22}>
-      <SolidCloud position={[-24, 18.5, -14]} scale={3.6} />
+  <Clouds material={THREE.MeshBasicMaterial} limit={32} range={140}>
+    <Float speed={0.2} rotationIntensity={0.03} floatIntensity={0.18}>
+      <Cloud
+        seed={11}
+        segments={28}
+        bounds={[8.5, 2.8, 3.6]}
+        volume={8}
+        color="#fffdf7"
+        position={[-23, 19.5, -16]}
+        opacity={0.72}
+        fade={32}
+      />
     </Float>
-    <Float speed={0.16} rotationIntensity={0.015} floatIntensity={0.18}>
-      <SolidCloud position={[21, 20.0, -18]} scale={3.0} color="#fff7e9" />
+    <Float speed={0.16} rotationIntensity={0.025} floatIntensity={0.16}>
+      <Cloud
+        seed={22}
+        segments={24}
+        bounds={[7.0, 2.2, 3.0]}
+        volume={6}
+        color="#fff8ef"
+        position={[20, 21.5, -20]}
+        opacity={0.68}
+        fade={30}
+      />
     </Float>
-    <Float speed={0.2} rotationIntensity={0.02} floatIntensity={0.2}>
-      <SolidCloud position={[-14, 22.0, 20]} scale={2.7} />
+    <Float speed={0.18} rotationIntensity={0.02} floatIntensity={0.15}>
+      <Cloud
+        seed={33}
+        segments={26}
+        bounds={[7.8, 2.4, 3.2]}
+        volume={7}
+        color="#ffffff"
+        position={[-15, 23.0, 18]}
+        opacity={0.7}
+        fade={31}
+      />
     </Float>
-    <Float speed={0.15} rotationIntensity={0.012} floatIntensity={0.17}>
-      <SolidCloud position={[25, 19.5, 14]} scale={2.9} color="#fff6e5" />
+    <Float speed={0.15} rotationIntensity={0.02} floatIntensity={0.14}>
+      <Cloud
+        seed={44}
+        segments={22}
+        bounds={[6.8, 2.0, 2.9]}
+        volume={5}
+        color="#fff9f1"
+        position={[26, 20.5, 14]}
+        opacity={0.66}
+        fade={29}
+      />
     </Float>
-  </group>
+  </Clouds>
 );
 
 /* ── Animated ocean water with GPU ripples + soft fresnel edge ─ */
@@ -378,10 +391,10 @@ const Scene = ({ agentTrackPos }: { agentTrackPos: MutableRefObject<THREE.Vector
   return (
     <>
       <SkyDome />
-      <fog attach="fog" args={["#cfe8ff", 30, 88]} />
+      <fog attach="fog" args={["#d8ecff", 36, 104]} />
       <Environment preset="sunset" environmentIntensity={0.25} />
 
-      <ambientLight intensity={0.52} color="#ffe7c8" />
+      <ambientLight intensity={0.54} color="#ffead2" />
       <directionalLight
         position={[10, 14, 6]}
         intensity={1.35}
