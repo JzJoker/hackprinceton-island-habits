@@ -20,13 +20,6 @@ export default defineSchema({
     ascendedAt: v.optional(v.number()),
   }).index("by_code", ["code"]),
 
-  users: defineTable({
-    phoneNumber: v.string(),
-    displayName: v.optional(v.string()),
-    createdAt: v.number(),
-    lastLoginAt: v.optional(v.number()),
-  }).index("by_phone", ["phoneNumber"]),
-
   islandMembers: defineTable({
     islandId: v.id("islands"),
     phoneNumber: v.string(),
@@ -118,10 +111,4 @@ export default defineSchema({
   })
     .index("by_agent", ["agentId"])
     .index("by_agent_sent", ["agentId", "sentAt"]),
-
-  sessions: defineTable({
-    token: v.string(),
-    userId: v.id("users"),
-    createdAt: v.number(),
-  }).index("by_token", ["token"]),
 });

@@ -4,7 +4,6 @@ import type { ThreeEvent } from "@react-three/fiber";
 import { Html, Float } from "@react-three/drei";
 import * as THREE from "three";
 import type { Agent, Building, Scenery } from "../state";
-import { BUILD_LIBRARY } from "../state";
 
 interface Props {
   agent: Agent;
@@ -18,7 +17,16 @@ interface Props {
   gossipText?: string | null;
 }
 
-const AGENT_RADIUS = 0.32;
+const hashAgentId = (input: string): number => {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+};
+
+const smoothStep = (t: number) => t * t * (3 - 2 * t);
 
 /* ── Chibi-style cozy villager agent ──────────────────── */
 export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelected, islandRadius = 7.0, onPositionUpdate, gossipText }: Props) => {
@@ -30,159 +38,94 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
   const rightArm = useRef<THREE.Group>(null);
   const [hovered, setHovered] = useState(false);
 
-  const seed = useMemo(() => Math.random(), []);
+  const seedHash = useMemo(() => hashAgentId(agent.id), [agent.id]);
+  const seed = useMemo(() => (seedHash % 10_000) / 10_000, [seedHash]);
   const GROUND_Y = 0.26;
 
-  // All waypoints are on the single current island
-  const targetIdx = useRef(Math.max(0, Math.floor(seed * waypoints.length)));
+  // Stable deterministic route per agent so all tabs/accounts animate identically.
+  const orderedWaypoints = useMemo<[number, number][]>(() => {
+    if (!waypoints || waypoints.length === 0) {
+      return [agent.home];
+    }
+    return [...waypoints]
+      .map((point, idx) => ({
+        point,
+        key: hashAgentId(`${agent.id}:${idx}`),
+      }))
+      .sort((a, b) => a.key - b.key)
+      .map((entry) => entry.point);
+  }, [agent.home, agent.id, waypoints]);
 
   const pos = useRef(new THREE.Vector3(agent.home[0], GROUND_Y, agent.home[1]));
   const angle = useRef(seed * Math.PI * 2);
-  const idleTimer = useRef(0);
   const walkCycle = useRef(0);
-  const stuckTimer = useRef(0);
-  const lastPos = useRef(new THREE.Vector3());
 
-  // Keep fresh refs so useFrame closure always has latest obstacle data
+  // Keep fresh refs so useFrame closure always has latest live data.
   const buildingsRef = useRef(buildings);
   buildingsRef.current = buildings;
-  const sceneryRef = useRef(scenery);
-  sceneryRef.current = scenery;
-
-  const speed = 0.35 + (agent.mood / 100) * 0.35;
+  const sceneryCountRef = useRef(scenery.length);
+  sceneryCountRef.current = scenery.length;
 
   useFrame((_state, delta) => {
     if (!group.current) return;
 
-    // ── Find nearest under-construction building ────────
-    const CONSTRUCTION_RANGE = 1.6;  // stop and build within this radius
-    const CONSTRUCTION_SEEK = 6.0;   // notice a site from this far
+    const route = orderedWaypoints.length > 0 ? orderedWaypoints : [agent.home];
+    const routeLen = route.length;
+    const pace = 0.085 + (agent.mood / 100) * 0.045;
+    const worldTime = Date.now() / 1000;
+    const scenicPhase = sceneryCountRef.current * 0.001;
+    const travel = worldTime * pace + seed * routeLen + scenicPhase;
+    const seg = ((travel % routeLen) + routeLen) % routeLen;
+    const segIdx = Math.floor(seg);
+    const nextIdx = (segIdx + 1) % routeLen;
+    const routeT = smoothStep(seg - segIdx);
+
+    const start = route[segIdx] ?? agent.home;
+    const end = route[nextIdx] ?? start;
+    const direction = new THREE.Vector2(end[0] - start[0], end[1] - start[1]);
+
+    pos.current.set(
+      start[0] + (end[0] - start[0]) * routeT,
+      GROUND_Y,
+      start[1] + (end[1] - start[1]) * routeT,
+    );
+
+    // Optional "work mode": if agent gets very close to an active construction,
+    // stop and face it so all clients display the same behavior.
+    let nearConstruction = false;
     let nearestSite: [number, number] | null = null;
     let nearestDist = Infinity;
-    for (const b of buildingsRef.current) {
-      if ((b.buildProgress ?? 1) >= 1) continue;
-      const dx = b.pos[0] - pos.current.x;
-      const dz = b.pos[1] - pos.current.z;
+    for (const building of buildingsRef.current) {
+      if ((building.buildProgress ?? 1) >= 1) continue;
+      const dx = building.pos[0] - pos.current.x;
+      const dz = building.pos[1] - pos.current.z;
       const d = Math.hypot(dx, dz);
-      if (d < nearestDist) { nearestDist = d; nearestSite = b.pos; }
-    }
-    const nearConstruction = nearestSite !== null && nearestDist < CONSTRUCTION_RANGE;
-    const seekConstruction = nearestSite !== null && nearestDist < CONSTRUCTION_SEEK && !nearConstruction;
-
-    // ── Movement: walk to construction site or waypoints ─
-    let walking = false;
-    if (nearConstruction) {
-      // Stop — face the building and start hammering
-      if (nearestSite) {
-        const dx = nearestSite[0] - pos.current.x;
-        const dz = nearestSite[1] - pos.current.z;
-        const targetAngle = Math.atan2(dx, dz);
-        const diff = targetAngle - angle.current;
-        const wrapped = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI;
-        angle.current += wrapped * 0.08;
-      }
-      idleTimer.current = 0;
-    } else if (seekConstruction && nearestSite) {
-      // Walk toward the construction site
-      const tv = new THREE.Vector3(nearestSite[0], GROUND_Y, nearestSite[1]);
-      const dir = tv.clone().sub(pos.current);
-      const distance = dir.length();
-      walking = distance > 0.15;
-      if (walking) {
-        dir.normalize();
-        pos.current.add(dir.clone().multiplyScalar(Math.min(distance, speed * delta)));
-        const targetAngle = Math.atan2(dir.x, dir.z);
-        const diff = targetAngle - angle.current;
-        const wrapped = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI;
-        angle.current += wrapped * 0.12;
-      }
-    } else {
-      // Normal waypoint wandering
-      if (!waypoints || waypoints.length === 0) return;
-      const target = waypoints[targetIdx.current % waypoints.length];
-      if (!target) return;
-      const tv = new THREE.Vector3(target[0], GROUND_Y, target[1]);
-      const dir = tv.clone().sub(pos.current);
-      const distance = dir.length();
-      walking = distance > 0.15;
-      if (!walking) {
-        idleTimer.current += delta;
-        if (idleTimer.current > 2 + Math.random() * 3) {
-          targetIdx.current = Math.floor(Math.random() * waypoints.length);
-          idleTimer.current = 0;
-        }
-      } else {
-        dir.normalize();
-        const move = Math.min(distance, speed * delta);
-        pos.current.add(dir.multiplyScalar(move));
-        const targetAngle = Math.atan2(dir.x, dir.z);
-        const diff = targetAngle - angle.current;
-        const wrapped = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI;
-        angle.current += wrapped * 0.12;
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearestSite = building.pos;
       }
     }
-
-    // ── Obstacle repulsion ──────────────────────────────
-    const repX = { v: 0 }, repZ = { v: 0 };
-    const dt = Math.min(delta, 0.05);
-
-    for (const b of buildingsRef.current) {
-      const opt = BUILD_LIBRARY.find((x) => x.type === b.type);
-      const bR = (opt?.radius ?? 0.5) + AGENT_RADIUS;
-      const dx = pos.current.x - b.pos[0];
-      const dz = pos.current.z - b.pos[1];
-      const d = Math.hypot(dx, dz);
-      if (d < bR && d > 0.001) {
-        const str = ((bR - d) / bR) * 5;
-        repX.v += (dx / d) * str;
-        repZ.v += (dz / d) * str;
-      }
+    if (nearestSite && nearestDist < 1.25) {
+      nearConstruction = true;
+      angle.current = Math.atan2(nearestSite[0] - pos.current.x, nearestSite[1] - pos.current.z);
+    } else if (direction.lengthSq() > 0.0001) {
+      angle.current = Math.atan2(direction.x, direction.y);
     }
 
-    for (const s of sceneryRef.current) {
-      if (s.type === "flower") continue;
-      const sR = (s.type === "tree" ? 0.38 : 0.22) + AGENT_RADIUS;
-      const dx = pos.current.x - s.pos[0];
-      const dz = pos.current.z - s.pos[1];
-      const d = Math.hypot(dx, dz);
-      if (d < sR && d > 0.001) {
-        const str = ((sR - d) / sR) * 4;
-        repX.v += (dx / d) * str;
-        repZ.v += (dz / d) * str;
-      }
+    if (Math.hypot(pos.current.x, pos.current.z) > islandRadius) {
+      const clamped = new THREE.Vector2(pos.current.x, pos.current.z).setLength(islandRadius);
+      pos.current.x = clamped.x;
+      pos.current.z = clamped.y;
     }
 
-    pos.current.x += repX.v * dt;
-    pos.current.z += repZ.v * dt;
-
-    // ── Hard clamp to island zone ────────────────────────
-    {
-      const dx = pos.current.x;
-      const dz = pos.current.z;
-      const d = Math.hypot(dx, dz);
-      if (d > islandRadius) {
-        pos.current.x = (dx / d) * islandRadius;
-        pos.current.z = (dz / d) * islandRadius;
-      }
-    }
-
-    // ── Stuck detection ──────────────────────────────────
-    stuckTimer.current += delta;
-    if (stuckTimer.current > 3) {
-      const moved = pos.current.distanceTo(lastPos.current);
-      if (walking && moved < 0.02) {
-        targetIdx.current = Math.floor(Math.random() * waypoints.length);
-      }
-      lastPos.current.copy(pos.current);
-      stuckTimer.current = 0;
-    }
+    const walking = !nearConstruction && direction.lengthSq() > 0.01;
 
     group.current.position.copy(pos.current);
     group.current.rotation.y = angle.current;
     onPositionUpdate?.(pos.current);
 
-    // ── Animation cycle — always ticks when building ────
-    walkCycle.current += delta * (nearConstruction ? 10 : (walking ? speed * 12 : 0));
+    // ── Animation cycle — deterministic by world time ───
+    walkCycle.current += delta * (nearConstruction ? 8 : (walking ? (5.5 + pace * 20) : 0));
     const t = walkCycle.current;
     const swing = walking ? Math.sin(t) * 0.45 : 0;
     const bounce = (walking || nearConstruction)

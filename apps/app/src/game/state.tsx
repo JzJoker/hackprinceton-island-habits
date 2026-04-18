@@ -218,7 +218,7 @@ interface GameState {
   phoneNumber: string | null;
   trackAgent: boolean;
   setTrackAgent: (v: boolean) => void;
-  syncFromConvex: (patch: Partial<Pick<GameState, "level" | "xp" | "coins" | "agents" | "buildings">>) => void;
+  syncFromConvex: (patch: Partial<Pick<GameState, "level" | "xp" | "coins" | "agents" | "buildings" | "goals">>) => void;
 
   // Dev controls (desktop only)
   devNextDay: () => void;       // ☀️✓ good day — all goals done, mood up
@@ -244,6 +244,7 @@ export interface GameBootstrapData {
   goals?: Goal[];
   buildings?: Building[];
   onBuildingPlaced?: (type: string, x: number, y: number, cost: number, days: number) => void;
+  onGoalCompleted?: (goalId: string) => void | Promise<void>;
 }
 
 const Ctx = createContext<GameState | null>(null);
@@ -377,6 +378,7 @@ export const GameProvider = ({
   const seededAgents = initialData?.agents?.length ? initialData.agents : initialAgents;
   const seededGoals = initialData?.goals?.length ? initialData.goals : initialGoals;
   const onBuildingPlacedRef = useRef(initialData?.onBuildingPlaced);
+  const onGoalCompletedRef = useRef(initialData?.onGoalCompleted);
 
   const [screen, setScreen] = useState<ScreenId>(null);
   const [selectedAgent, setSelectedAgent] = useState<AgentId>(seededAgents[0]?.id ?? "sofia");
@@ -409,7 +411,7 @@ export const GameProvider = ({
     setTimeout(() => setToast(null), 2400);
   }, []);
 
-  const syncFromConvex = useCallback((patch: Partial<Pick<GameState, "level" | "xp" | "coins" | "agents" | "buildings">>) => {
+  const syncFromConvex = useCallback((patch: Partial<Pick<GameState, "level" | "xp" | "coins" | "agents" | "buildings" | "goals">>) => {
     if (patch.level !== undefined) setLevel(patch.level);
     if (patch.xp !== undefined) setXp(patch.xp);
     if (patch.coins !== undefined) setCoins(patch.coins);
@@ -425,6 +427,7 @@ export const GameProvider = ({
           : incoming;
       })
     );
+    if (patch.goals !== undefined) setGoals(patch.goals);
   }, []);
 
   const graduateIsland = useCallback(() => {
@@ -539,29 +542,37 @@ export const GameProvider = ({
   }, [showToast]);
 
   const completeGoal = useCallback((id: string) => {
-    setGoals((gs) => {
-      const g = gs.find((x) => x.id === id);
-      if (g && !g.done) {
-        setCoins((c) => c + g.reward);
-        setXp((prevXp) => {
-          const newXp = prevXp + 5;
-          if (newXp >= 100) {
-            setLevel((l) => l + 1);
-            return 0;
-          }
-          return newXp;
-        });
-        setAgents(as => as.map(a =>
-          a.isYou
-            ? { ...a, mood: Math.min(100, a.mood + 6) }
-            : { ...a, mood: Math.min(100, a.mood + 2) }
-        ));
-        showToast(`+${g.reward} coins · mood +6 🌟 · ${g.text} ✓`);
+    const goalToComplete = goals.find((goal) => goal.id === id);
+    if (!goalToComplete || goalToComplete.done) {
+      setPendingCheckIn(null);
+      return;
+    }
+
+    setGoals((gs) => gs.map((goal) => goal.id === id ? { ...goal, done: true } : goal));
+    setCoins((c) => c + goalToComplete.reward);
+    setXp((prevXp) => {
+      const newXp = prevXp + 5;
+      if (newXp >= 100) {
+        setLevel((l) => l + 1);
+        return 0;
       }
-      return gs.map((g) => g.id === id ? { ...g, done: true } : g);
+      return newXp;
     });
+    setAgents(as => as.map(a =>
+      a.isYou
+        ? { ...a, mood: Math.min(100, a.mood + 6) }
+        : { ...a, mood: Math.min(100, a.mood + 2) }
+    ));
+    showToast(`+${goalToComplete.reward} coins · mood +6 🌟 · ${goalToComplete.text} ✓`);
     setPendingCheckIn(null);
-  }, [showToast]);
+
+    const persist = onGoalCompletedRef.current;
+    if (persist) {
+      Promise.resolve(persist(id)).catch((err) => {
+        console.error("Failed to persist goal completion", err);
+      });
+    }
+  }, [goals, showToast]);
 
   const addGoal = useCallback((text: string, reward: number, photo?: boolean) => {
     setGoals((gs) => [...gs, { id: `g${Date.now()}`, text, done: false, reward, photo: photo ?? false }]);

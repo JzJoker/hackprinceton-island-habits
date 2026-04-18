@@ -1,14 +1,10 @@
 import { useState } from "react";
 import { X, Camera, Check, Coins, Sparkles } from "lucide-react";
-import { useMutation } from "convex/react";
-import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
 import { useGame } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 
 export const CheckInOverlay = () => {
-  const { screen, setScreen, goals, completeGoal, pendingCheckIn, setPendingCheckIn, islandId, phoneNumber } = useGame();
-  const checkInMut = useMutation(api.goals.checkIn);
+  const { screen, setScreen, goals, completeGoal, pendingCheckIn, setPendingCheckIn } = useGame();
   const { closing, close } = useOverlayClose(() => {
     setScreen(null);
     setPendingCheckIn(null);
@@ -122,15 +118,6 @@ export const CheckInOverlay = () => {
                   completeGoal(pendingCheckIn.id);
                   setScreen(null);
                   setPhotoTaken(false);
-                  if (islandId) {
-                    const today = new Date().toISOString().slice(0, 10);
-                    checkInMut({
-                      goalId: pendingCheckIn.id as Id<"goals">,
-                      islandId: islandId as Id<"islands">,
-                      phoneNumber: phoneNumber || 'unknown',
-                      date: today,
-                    }).catch(console.error);
-                  }
                 }}
                 className="flex-1 btn-game disabled:opacity-50 disabled:cursor-not-allowed"
               >

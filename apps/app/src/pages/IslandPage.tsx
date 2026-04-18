@@ -112,9 +112,14 @@ function BuildProgressSync({ islandId }: { islandId: Id<'islands'> }) {
 }
 
 function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
-  const { syncFromConvex } = useGame()
+  const { syncFromConvex, phoneNumber } = useGame()
   const islandDetails = useQuery(api.islands.getIslandDetails, { islandId })
   const islandBuildings = useQuery(api.buildings.getBuildings, { islandId })
+  const islandGoals = useQuery(api.goals.getIslandGoals, { islandId })
+  const todayCheckIns = useQuery(
+    api.goals.getTodayCheckIns,
+    phoneNumber ? { islandId, phoneNumber, date: new Date().toISOString().slice(0, 10) } : 'skip',
+  )
 
   useEffect(() => {
     if (!islandDetails?.island) return
@@ -122,7 +127,29 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
     const totalXp = islandDetails.island.xp ?? 0
     const progressInLevel = Math.max(0, totalXp - level * 20)
     const xp = Math.min(100, Math.round((progressInLevel / 20) * 100))
-    syncFromConvex({ level, xp, coins: islandDetails.island.currency ?? 0 })
+    const agents: Agent[] = islandDetails.members
+      .filter((member): member is typeof islandDetails.members[0] & { phoneNumber: string } =>
+        Boolean(member?.phoneNumber)
+      )
+      .map((member) => {
+        const persisted = islandDetails.agents.find((a) => a?.phoneNumber === member.phoneNumber)
+        return {
+          id: member.phoneNumber,
+          name: "",
+          img: "",
+          skin: "",
+          shirt: "",
+          pants: "",
+          hair: "",
+          hairStyle: "short",
+          mood: Math.max(0, Math.min(100, persisted?.motivation ?? 70)),
+          line: "",
+          goal: "",
+          online: true,
+          home: [0, 0] as [number, number],
+        }
+      })
+    syncFromConvex({ level, xp, coins: islandDetails.island.currency ?? 0, agents })
   }, [islandDetails, syncFromConvex])
 
   useEffect(() => {
@@ -139,6 +166,16 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
     })
   }, [islandBuildings, syncFromConvex])
 
+  useEffect(() => {
+    if (!islandGoals) return
+    syncFromConvex({
+      goals: mapIslandGoalsToUiGoals(
+        islandGoals,
+        new Set((todayCheckIns ?? []).map((checkIn) => checkIn.goalId)),
+      ),
+    })
+  }, [islandGoals, todayCheckIns, syncFromConvex])
+
   return null
 }
 
@@ -148,6 +185,8 @@ export function IslandPage() {
   const islandId = islandIdParam as Id<'islands'> | null
   const { user } = useUser()
   const phone = usePhoneNumber()
+  const userEmail = (user?.unsafeMetadata?.icloudEmail as string | undefined) ?? null
+  const participantIdentity = phone ?? userEmail
 
   const islandDetails = useQuery(
     api.islands.getIslandDetails,
@@ -163,9 +202,12 @@ export function IslandPage() {
   )
   const todayCheckIns = useQuery(
     api.goals.getTodayCheckIns,
-    islandId && phone ? { islandId, phoneNumber: phone, date: new Date().toISOString().slice(0, 10) } : 'skip',
+    islandId && participantIdentity
+      ? { islandId, phoneNumber: participantIdentity, date: new Date().toISOString().slice(0, 10) }
+      : 'skip',
   )
   const placeBuildingMut = useMutation(api.buildings.placeBuilding)
+  const checkInMut = useMutation(api.goals.checkIn)
 
   const bootstrap = useMemo<GameBootstrapData | null>(() => {
     if (!islandDetails || !islandDetails.island) return null
@@ -175,11 +217,12 @@ export function IslandPage() {
     }
 
     const meCandidates = new Set(
-      [phone, user?.unsafeMetadata?.icloudEmail as string | undefined]
+      [phone, userEmail]
         .filter((value): value is string => Boolean(value && value.length > 0)),
     )
 
     const goalsByPhone = new Map<string, string[]>()
+    const persistedGoalIds = new Set((islandGoals ?? []).map((goal) => goal._id))
     for (const goal of islandGoals ?? []) {
       if (!goal.phoneNumber || !goal.text) continue
       const existing = goalsByPhone.get(goal.phoneNumber) ?? []
@@ -236,7 +279,7 @@ export function IslandPage() {
     return {
       islandName: islandDetails.island.name,
       islandId: islandId ?? undefined,
-      phoneNumber: phone ?? undefined,
+      phoneNumber: participantIdentity ?? undefined,
       level,
       xp,
       coins: islandDetails.island.currency ?? 0,
@@ -248,7 +291,7 @@ export function IslandPage() {
       buildings,
       onBuildingPlaced: (type, x, y, cost, days) => {
         if (!islandId) return
-        const placedBy = phone || 'unknown'
+        const placedBy = participantIdentity || 'unknown'
         placeBuildingMut({
           islandId,
           type,
@@ -259,9 +302,19 @@ export function IslandPage() {
           buildTimeDays: days,
         }).catch(console.error)
       },
+      onGoalCompleted: (goalId) => {
+        if (!islandId || !participantIdentity) return
+        if (!persistedGoalIds.has(goalId as Id<'goals'>)) return
+        return checkInMut({
+          goalId: goalId as Id<'goals'>,
+          islandId,
+          phoneNumber: participantIdentity,
+          date: new Date().toISOString().slice(0, 10),
+        }).then(() => undefined)
+      },
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [islandDetails, islandGoals, islandBuildings, todayCheckIns, phone, user?.unsafeMetadata?.icloudEmail, islandId])
+  }, [islandDetails, islandGoals, islandBuildings, todayCheckIns, phone, userEmail, participantIdentity, islandId, checkInMut, placeBuildingMut])
 
   if (!islandId) {
     return (

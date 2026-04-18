@@ -9,13 +9,11 @@ import requests
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from auth import auth_bp
 from jobs import jobs_bp
 
 app = Flask(__name__)
 CORS(app)
 
-app.register_blueprint(auth_bp)
 app.register_blueprint(jobs_bp)
 
 KNOT_ENVIRONMENT = os.getenv("KNOT_ENVIRONMENT", "production")
