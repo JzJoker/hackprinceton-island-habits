@@ -32,6 +32,10 @@ export default defineSchema({
     phoneNumbers: v.array(v.string()),
     createdAt: v.number(),
     ascendedAt: v.optional(v.number()),
+    // Island-wide resource stockpiles (logs / rocks) consumed when placing
+    // buildings. Present on newer documents; older rows leave these undefined.
+    logs: v.optional(v.number()),
+    rocks: v.optional(v.number()),
   }).index("by_code", ["code"]),
 
   islandMembers: defineTable({
