@@ -36,7 +36,14 @@ def call_k2(system: str, user: str, max_tokens: int = 200) -> str:
 
 def call_k2_json(system: str, user: str, max_tokens: int = 200) -> dict:
     raw = call_k2(system, user, max_tokens)
+    # Strip <think>...</think> reasoning blocks emitted by K2-Think
+    raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+    # Strip markdown code fences
     raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
+    # If multiple JSON objects exist, grab the first one
+    m = re.search(r"\{.*\}", raw, flags=re.DOTALL)
+    if m:
+        raw = m.group(0)
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
@@ -95,7 +102,7 @@ def generate_personality(
 
 def roast_goal(player_name: str, proposed_goal: str) -> dict:
     user = f"Player name: {player_name}\nProposed goal: {proposed_goal}"
-    return call_k2_json(_load("prompt_goal_roaster.md"), user, max_tokens=120)
+    return call_k2_json(_load("prompt_goal_roaster.md"), user, max_tokens=400)
 
 
 def generate_agent_gossip(agent_personality: dict, recent_events: list) -> dict:
