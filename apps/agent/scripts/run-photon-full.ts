@@ -175,14 +175,15 @@ function parseCommand(raw: string): Command {
 }
 
 const HELP_TEXT =
-  "Here's what I can do:\n" +
-  "• /start — create an island for this group\n" +
-  "• /goals — list your active goals (numbered)\n" +
-  "• /add <goal> — add a new goal\n" +
-  "• /drop <n> — archive the Nth goal\n" +
-  "• /edit <n> <new text> — replace the Nth goal\n" +
-  "• /status — today's progress\n" +
-  "• /help — show this list";
+  "✨ Island Habits — here's what I can do ✨\n" +
+  "🏝️  /start — spin up a fresh island for your group\n" +
+  "📋  /goals — list your active goals (numbered)\n" +
+  "🌱  /add <goal> — plant a new goal on your island\n" +
+  "🍂  /drop <n> — let the Nth goal go\n" +
+  "✏️  /edit <n> <new text> — reshape the Nth goal\n" +
+  "📊  /status — today's progress & motivation\n" +
+  "❓  /help — show this list\n\n" +
+  "Tip: you can drop the leading slash (e.g. `add meditate 10 min`).";
 
 // ── Handlers ──────────────────────────────────────────────────────────
 
@@ -242,7 +243,18 @@ async function handleAdd(space: any, sender: string, goalText: string): Promise<
   // Refresh the numbered listing so /drop <n> right after /add works predictably.
   const goals = await fetchGoals(island._id, sender);
   rememberListing(sender, goals);
-  await space.send(text(`Added: "${goalText}". You now have ${goals.length} goal${goals.length === 1 ? "" : "s"}.`));
+
+  const count = goals.length;
+  const plural = count === 1 ? "" : "s";
+  // Pick a warm flavor message so adds don't all sound the same.
+  const flavors = [
+    `🌱 Planted "${goalText}" on ${island.name}. You're tending ${count} goal${plural} now — the island hums a little louder. ✨`,
+    `🌿 "${goalText}" is taking root. ${count} goal${plural} in your grove. Keep going — I'm rooting for you. 💫`,
+    `☀️ New goal locked in: "${goalText}". That's ${count} for the week. Small steps, real island. 🏝️`,
+    `✨ "${goalText}" added to your list. ${count} goal${plural} alive and glowing. Let's do this. 💪`,
+  ];
+  const msg = flavors[Math.floor(Math.random() * flavors.length)];
+  await space.send(text(msg));
 }
 
 async function handleDrop(space: any, sender: string, index: number): Promise<void> {
@@ -325,37 +337,55 @@ async function main(): Promise<void> {
     if (!content || content.type !== "plain_text") continue;
     const body = content.text;
     const time = message.timestamp.toLocaleTimeString();
-    console.log(`[${time}] space=${space.id} from=${message.sender.id}: ${body}`);
-
     const cmd = parseCommand(body);
-    if (cmd.kind === "none") continue;
+
+    // Resolve the user identity up front so every log line tags the response.
+    // senderAddress may return null for malformed IDs; fall back to raw sender.
+    const resolvedSender = senderAddress(message);
+    const senderLabel = resolvedSender ?? `raw:${message.sender.id}`;
+    const kind = resolvedSender?.startsWith("+") ? "phone" : resolvedSender ? "email" : "unknown";
+
+    console.log(
+      `\n┌─ [${time}] space=${space.id}` +
+      `\n│  user: ${senderLabel} (${kind})` +
+      `\n│  msg:  ${JSON.stringify(body)}` +
+      `\n│  cmd:  ${cmd.kind}`,
+    );
+
+    if (cmd.kind === "none") {
+      console.log(`└─ (no command matched — ignored)`);
+      continue;
+    }
 
     if (cmd.kind === "start") {
       await handleStart(space, message);
+      console.log(`└─ handled /start for ${senderLabel}`);
       continue;
     }
     if (cmd.kind === "help") {
       await space.send(text(HELP_TEXT));
+      console.log(`└─ sent help to ${senderLabel}`);
       continue;
     }
 
     // All remaining commands need a resolvable sender address.
-    const sender = senderAddress(message);
-    if (!sender) {
+    if (!resolvedSender) {
       await space.send(text("I couldn't read your phone/email from this message."));
+      console.log(`└─ ⚠️  could not resolve sender address for ${message.sender.id}`);
       continue;
     }
 
     try {
       switch (cmd.kind) {
-        case "goals":  await handleGoals(space, sender); break;
-        case "add":    await handleAdd(space, sender, cmd.text); break;
-        case "drop":   await handleDrop(space, sender, cmd.index); break;
-        case "edit":   await handleEdit(space, sender, cmd.index, cmd.text); break;
-        case "status": await handleStatus(space, sender); break;
+        case "goals":  await handleGoals(space, resolvedSender); break;
+        case "add":    await handleAdd(space, resolvedSender, cmd.text); break;
+        case "drop":   await handleDrop(space, resolvedSender, cmd.index); break;
+        case "edit":   await handleEdit(space, resolvedSender, cmd.index, cmd.text); break;
+        case "status": await handleStatus(space, resolvedSender); break;
       }
+      console.log(`└─ ✅ /${cmd.kind} for ${senderLabel}`);
     } catch (err: any) {
-      console.error(`[${cmd.kind}] handler failed:`, err?.message ?? err);
+      console.error(`└─ ❌ /${cmd.kind} for ${senderLabel} failed: ${err?.message ?? err}`);
       await space.send(text("Something went wrong. Try again in a moment."));
     }
   }
