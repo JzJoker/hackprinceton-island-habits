@@ -16,7 +16,17 @@ function toE164Like(value: unknown): string | null {
   return `+${digits}`;
 }
 
-function collectPhones(space: any, message: any): string[] {
+function isValidEmail(value: unknown): string | null {
+  if (!value || typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  // Check for iCloud, Apple, and other common email formats
+  if (/^[^\s@]+@(icloud\.com|me\.com|apple\.com|mail\.com)$/.test(trimmed)) {
+    return trimmed;
+  }
+  return null;
+}
+
+function collectParticipants(space: any, message: any): string[] {
   const raw: unknown[] = [];
   const participantArrays = [
     space?.participants,
@@ -28,20 +38,27 @@ function collectPhones(space: any, message: any): string[] {
   for (const arr of participantArrays) {
     if (!Array.isArray(arr)) continue;
     for (const item of arr) {
-      raw.push(item?.phoneNumber, item?.address, item?.id, item);
+      raw.push(item?.phoneNumber, item?.address, item?.email, item?.id, item);
     }
   }
-  raw.push(message?.sender?.phoneNumber, message?.sender?.address, message?.sender?.id);
+  raw.push(message?.sender?.phoneNumber, message?.sender?.address, message?.sender?.email, message?.sender?.id);
 
-  const phones = Array.from(
+  const participants = Array.from(
     new Set(
       raw
-        .map(toE164Like)
+        .map((val) => toE164Like(val) || isValidEmail(val))
         .filter((p): p is string => Boolean(p))
-        .filter((p) => p.replace(/\D/g, "") !== BOT_PHONE)
+        .filter((p) => {
+          // Filter out bot phone number
+          if (p.startsWith("+")) {
+            return p.replace(/\D/g, "") !== BOT_PHONE;
+          }
+          // Keep all valid emails
+          return true;
+        })
     )
   );
-  return phones;
+  return participants;
 }
 
 export async function runMessageLoop(app: PhotonApp): Promise<void> {
@@ -66,26 +83,26 @@ export async function runMessageLoop(app: PhotonApp): Promise<void> {
     }
 
     try {
-      const phoneNumbers = collectPhones(space as any, message as any);
-      if (!phoneNumbers.length) {
+      const participants = collectParticipants(space as any, message as any);
+      if (!participants.length) {
         await space.send(
-          text("Couldn't detect group member phone numbers. Make sure this is a group iMessage thread.")
+          text("Couldn't detect group member identifiers. Make sure this is a group iMessage thread with phone numbers or iCloud email addresses.")
         );
         continue;
       }
 
       const convex = new ConvexHttpClient(CONVEX_URL);
       const result = await (convex as any).mutation("islands:createIsland", {
-        phoneNumbers,
+        phoneNumbers: participants,
       });
       const code = result.code as string;
-      const joinUrl = `${APP_BASE_URL}/onboarding?code=${code}`;
+      const joinUrl = `${APP_BASE_URL}/?code=${code}`;
 
       markOnboarded(space.id);
       await space.send(
         text(`Island Habits started.\n\nRoom Code: ${code}\nJoin: ${joinUrl}`),
       );
-      console.log(`[/start] space=${space.id} code=${code} phones=${phoneNumbers.join(",")}`);
+      console.log(`[/start] space=${space.id} code=${code} participants=${participants.join(",")}`);
     } catch (err: any) {
       console.error(`[/start] failed:`, err);
       await space.send(text("Failed to create room code. Try /start again."));

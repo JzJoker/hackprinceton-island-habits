@@ -24,14 +24,6 @@ export function DashboardPage() {
 
   const convex = useConvex()
   const islands = useQuery(api.islands.getIslandsByPhone, phone ? { phoneNumber: phone } : 'skip')
-
-  // Debug logging
-  if (phone) {
-    console.log('🔍 Dashboard - Phone from Clerk:', phone)
-    console.log('🔍 Islands query result:', islands)
-  } else {
-    console.log('❌ No phone from Clerk')
-  }
   const islandDetails = useQuery(
     api.islands.getIslandDetails,
     islandId ? { islandId } : 'skip',

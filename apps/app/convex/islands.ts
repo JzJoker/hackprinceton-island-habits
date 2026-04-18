@@ -14,7 +14,7 @@ function generateCode(): string {
 // Create a new island with a game code
 export const createIsland = mutation({
   args: {
-    phoneNumbers: v.array(v.string()),
+    phoneNumbers: v.array(v.string()), // Can contain phone numbers or emails
   },
   async handler(ctx, args) {
     const code = generateCode();
@@ -35,13 +35,13 @@ export const createIsland = mutation({
       createdAt: Date.now(),
     });
 
-    // Add all phone numbers as island members
-    for (const phone of args.phoneNumbers) {
+    // Add all participants (phone numbers or emails) as island members
+    for (const participant of args.phoneNumbers) {
       await ctx.db.insert("islandMembers", {
         islandId,
-        phoneNumber: phone,
+        phoneNumber: participant, // Can be either phone number or email
         joinedAt: Date.now(),
-        role: phone === args.phoneNumbers[0] ? "creator" : "member",
+        role: participant === args.phoneNumbers[0] ? "creator" : "member",
       });
     }
 
@@ -136,29 +136,25 @@ export const activateIsland = mutation({
   },
 });
 
-// Get all islands for a phone number
+// Get all islands for a phone number (or email)
 export const getIslandsByPhone = query({
   args: {
     phoneNumber: v.string(),
   },
   async handler(ctx, args) {
-    console.log("🔍 getIslandsByPhone called with:", args.phoneNumber);
     const members = await ctx.db
       .query("islandMembers")
       .withIndex("by_phone", (q) => q.eq("phoneNumber", args.phoneNumber))
       .collect();
 
-    console.log("📋 Found members:", members);
     const islands = [];
     for (const member of members) {
       const island = await ctx.db.get(member.islandId);
-      console.log("🏝️ Got island:", island);
       if (island) {
         islands.push(island);
       }
     }
 
-    console.log("✅ Returning islands:", islands);
     return islands;
   },
 });
