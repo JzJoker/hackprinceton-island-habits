@@ -38,6 +38,8 @@ export const createIsland = mutation({
       islandLevel: 0,
       xp: 0,
       currency: 300,
+      streakDays: 0,
+      dayCount: 1,
       difficulty: "normal",
       gridSize: {
         width: 10,
@@ -97,7 +99,12 @@ export const getIslandDetails = query({
       .withIndex("by_island", (q) => q.eq("islandId", args.islandId))
       .collect();
 
-    return { island, members, agents };
+    return {
+      island,
+      members: members.sort((a, b) => a.phoneNumber.localeCompare(b.phoneNumber)),
+      agents: agents.sort((a, b) => a.phoneNumber.localeCompare(b.phoneNumber)),
+      serverNowMs: Date.now(),
+    };
   },
 });
 

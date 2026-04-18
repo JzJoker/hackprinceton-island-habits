@@ -10,6 +10,10 @@ export default defineSchema({
     islandLevel: v.number(),
     xp: v.number(),
     currency: v.number(),
+    streakDays: v.optional(v.number()),
+    dayCount: v.optional(v.number()),
+    lastCheckInDate: v.optional(v.string()),
+    lastBuildTickAt: v.optional(v.number()),
     difficulty: v.union(v.literal("easy"), v.literal("normal"), v.literal("hard")),
     gridSize: v.object({
       width: v.number(),
@@ -18,10 +22,6 @@ export default defineSchema({
     phoneNumbers: v.array(v.string()),
     createdAt: v.number(),
     ascendedAt: v.optional(v.number()),
-    dayCount: v.optional(v.number()),
-    lastBuildTickAt: v.optional(v.number()),
-    lastCheckInDate: v.optional(v.string()),
-    streakDays: v.optional(v.number()),
   }).index("by_code", ["code"]),
 
   islandMembers: defineTable({

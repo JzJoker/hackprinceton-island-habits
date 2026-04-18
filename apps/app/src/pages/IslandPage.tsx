@@ -73,13 +73,7 @@ function mapIslandGoalsToUiGoals(
   }[] | undefined,
   checkedInGoalIds: Set<string>,
 ): Goal[] {
-  if (!goals || goals.length === 0) {
-    return [
-      { id: 'g1', text: 'Morning check-in', done: false, reward: 15 },
-      { id: 'g2', text: 'One focused work block', done: false, reward: 20 },
-      { id: 'g3', text: 'Move your body', done: false, reward: 15 },
-    ]
-  }
+  if (!goals || goals.length === 0) return []
 
   return goals.slice(0, 10).map((goal, idx) => ({
     id: goal._id,
@@ -88,6 +82,53 @@ function mapIslandGoalsToUiGoals(
     reward: 10 + ((idx % 3) + 1) * 5,
     photo: false,
   }))
+}
+
+function buildUiAgents(args: {
+  members: { phoneNumber: string }[]
+  persistedAgents: { phoneNumber: string; motivation?: number; reminderVariants?: string[] }[]
+  islandGoals: { phoneNumber: string; text: string }[] | undefined
+  meCandidates: Set<string>
+}): Agent[] {
+  const goalsByPhone = new Map<string, string[]>()
+  for (const goal of args.islandGoals ?? []) {
+    if (!goal.phoneNumber || !goal.text) continue
+    const existing = goalsByPhone.get(goal.phoneNumber) ?? []
+    existing.push(goal.text)
+    goalsByPhone.set(goal.phoneNumber, existing)
+  }
+
+  const persistedByPhone = new Map(args.persistedAgents.map((agent) => [agent.phoneNumber, agent]))
+
+  return args.members
+    .filter((member): member is { phoneNumber: string } => Boolean(member?.phoneNumber))
+    .map((member, index) => {
+      const id = member.phoneNumber
+      const hash = hashString(id)
+      const palette = STYLE_PALETTES[hash % STYLE_PALETTES.length]
+      const image = AGENT_IMAGES[hash % AGENT_IMAGES.length]
+      const savedAgent = persistedByPhone.get(id)
+      const agentGoal = goalsByPhone.get(id)?.[0] ?? 'Stay consistent'
+      const line = savedAgent?.reminderVariants?.[0] ?? `Let's make progress today.`
+      const mood = Math.max(0, Math.min(100, savedAgent?.motivation ?? 70))
+
+      return {
+        id,
+        name: participantDisplayName(id, index),
+        img: image,
+        skin: palette.skin,
+        shirt: palette.shirt,
+        pants: palette.pants,
+        hair: palette.hair,
+        hairStyle: palette.hairStyle,
+        mood,
+        line,
+        goal: agentGoal,
+        online: true,
+        isYou: args.meCandidates.has(id),
+        home: HOME_POINTS[index % HOME_POINTS.length],
+      }
+    })
 }
 
 function BuildProgressSync({ islandId }: { islandId: Id<'islands'> }) {
@@ -116,41 +157,34 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
   const islandDetails = useQuery(api.islands.getIslandDetails, { islandId })
   const islandBuildings = useQuery(api.buildings.getBuildings, { islandId })
   const islandGoals = useQuery(api.goals.getIslandGoals, { islandId })
-  const todayCheckIns = useQuery(
-    api.goals.getTodayCheckIns,
-    phoneNumber ? { islandId, phoneNumber, date: new Date().toISOString().slice(0, 10) } : 'skip',
+  const dailyCheckIns = useQuery(
+    api.goals.getIslandCheckInsByDate,
+    { islandId, date: new Date().toISOString().slice(0, 10) },
   )
 
   useEffect(() => {
     if (!islandDetails?.island) return
+    const meCandidates = new Set([phoneNumber].filter((value): value is string => Boolean(value)))
     const level = islandDetails.island.islandLevel ?? 0
     const totalXp = islandDetails.island.xp ?? 0
     const progressInLevel = Math.max(0, totalXp - level * 20)
     const xp = Math.min(100, Math.round((progressInLevel / 20) * 100))
-    const agents: Agent[] = islandDetails.members
-      .filter((member): member is typeof islandDetails.members[0] & { phoneNumber: string } =>
-        Boolean(member?.phoneNumber)
-      )
-      .map((member) => {
-        const persisted = islandDetails.agents.find((a) => a?.phoneNumber === member.phoneNumber)
-        return {
-          id: member.phoneNumber,
-          name: "",
-          img: "",
-          skin: "",
-          shirt: "",
-          pants: "",
-          hair: "",
-          hairStyle: "short",
-          mood: Math.max(0, Math.min(100, persisted?.motivation ?? 70)),
-          line: "",
-          goal: "",
-          online: true,
-          home: [0, 0] as [number, number],
-        }
-      })
-    syncFromConvex({ level, xp, coins: islandDetails.island.currency ?? 0, agents })
-  }, [islandDetails, syncFromConvex])
+    const agents = buildUiAgents({
+      members: islandDetails.members,
+      persistedAgents: islandDetails.agents,
+      islandGoals,
+      meCandidates,
+    })
+    syncFromConvex({
+      level,
+      xp,
+      coins: islandDetails.island.currency ?? 0,
+      streak: islandDetails.island.streakDays ?? 0,
+      dayCount: islandDetails.island.dayCount ?? 1,
+      serverNowMs: islandDetails.serverNowMs,
+      agents,
+    })
+  }, [islandDetails, islandGoals, phoneNumber, syncFromConvex])
 
   useEffect(() => {
     if (!islandBuildings) return
@@ -171,10 +205,10 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
     syncFromConvex({
       goals: mapIslandGoalsToUiGoals(
         islandGoals,
-        new Set((todayCheckIns ?? []).map((checkIn) => checkIn.goalId)),
+        new Set((dailyCheckIns ?? []).map((checkIn) => checkIn.goalId)),
       ),
     })
-  }, [islandGoals, todayCheckIns, syncFromConvex])
+  }, [islandGoals, dailyCheckIns, syncFromConvex])
 
   return null
 }
@@ -200,14 +234,15 @@ export function IslandPage() {
     api.buildings.getBuildings,
     islandId ? { islandId } : 'skip',
   )
-  const todayCheckIns = useQuery(
-    api.goals.getTodayCheckIns,
-    islandId && participantIdentity
-      ? { islandId, phoneNumber: participantIdentity, date: new Date().toISOString().slice(0, 10) }
-      : 'skip',
+  const dailyCheckIns = useQuery(
+    api.goals.getIslandCheckInsByDate,
+    islandId ? { islandId, date: new Date().toISOString().slice(0, 10) } : 'skip',
   )
   const placeBuildingMut = useMutation(api.buildings.placeBuilding)
   const checkInMut = useMutation(api.goals.checkIn)
+  const devGoodDayMut = useMutation(api.dev.goodDay)
+  const devBadDayMut = useMutation(api.dev.badDay)
+  const devLevelUpMut = useMutation(api.dev.levelUp)
 
   const bootstrap = useMemo<GameBootstrapData | null>(() => {
     if (!islandDetails || !islandDetails.island) return null
@@ -221,46 +256,13 @@ export function IslandPage() {
         .filter((value): value is string => Boolean(value && value.length > 0)),
     )
 
-    const goalsByPhone = new Map<string, string[]>()
     const persistedGoalIds = new Set((islandGoals ?? []).map((goal) => goal._id))
-    for (const goal of islandGoals ?? []) {
-      if (!goal.phoneNumber || !goal.text) continue
-      const existing = goalsByPhone.get(goal.phoneNumber) ?? []
-      existing.push(goal.text)
-      goalsByPhone.set(goal.phoneNumber, existing)
-    }
-
-    const agents: Agent[] = islandDetails.members
-      .filter((member): member is typeof islandDetails.members[0] & { phoneNumber: string } =>
-        Boolean(member?.phoneNumber)
-      )
-      .map((member, index) => {
-        const id = member.phoneNumber
-        const hash = hashString(id)
-        const palette = STYLE_PALETTES[hash % STYLE_PALETTES.length]
-        const image = AGENT_IMAGES[hash % AGENT_IMAGES.length]
-        const savedAgent = islandDetails.agents.find((agent) => agent?.phoneNumber === member.phoneNumber)
-        const agentGoal = goalsByPhone.get(member.phoneNumber)?.[0] ?? 'Stay consistent'
-        const line = savedAgent?.reminderVariants?.[0] ?? `Let's make progress today.`
-        const mood = Math.max(0, Math.min(100, savedAgent?.motivation ?? 70))
-
-        return {
-          id,
-          name: participantDisplayName(member.phoneNumber, index),
-          img: image,
-          skin: palette.skin,
-          shirt: palette.shirt,
-          pants: palette.pants,
-          hair: palette.hair,
-          hairStyle: palette.hairStyle,
-          mood,
-          line,
-          goal: agentGoal,
-          online: true,
-          isYou: meCandidates.has(member.phoneNumber),
-          home: HOME_POINTS[index % HOME_POINTS.length],
-        }
-      })
+    const agents = buildUiAgents({
+      members: islandDetails.members,
+      persistedAgents: islandDetails.agents,
+      islandGoals,
+      meCandidates,
+    })
 
     const level = islandDetails.island.islandLevel ?? 0
     const totalXp = islandDetails.island.xp ?? 0
@@ -283,10 +285,13 @@ export function IslandPage() {
       level,
       xp,
       coins: islandDetails.island.currency ?? 0,
+      streak: islandDetails.island.streakDays ?? 0,
+      dayCount: islandDetails.island.dayCount ?? 1,
+      serverNowMs: islandDetails.serverNowMs,
       agents,
       goals: mapIslandGoalsToUiGoals(
         islandGoals,
-        new Set((todayCheckIns ?? []).map((c) => c.goalId)),
+        new Set((dailyCheckIns ?? []).map((c) => c.goalId)),
       ),
       buildings,
       onBuildingPlaced: (type, x, y, cost, days) => {
@@ -303,8 +308,12 @@ export function IslandPage() {
         })
       },
       onGoalCompleted: (goalId) => {
-        if (!islandId || !participantIdentity) return
-        if (!persistedGoalIds.has(goalId as Id<'goals'>)) return
+        if (!islandId || !participantIdentity) {
+          return Promise.reject(new Error('Missing island identity for check-in'))
+        }
+        if (!persistedGoalIds.has(goalId as Id<'goals'>)) {
+          return Promise.reject(new Error('Goal is not persisted yet. Please refresh island goals.'))
+        }
         return checkInMut({
           goalId: goalId as Id<'goals'>,
           islandId,
@@ -312,9 +321,27 @@ export function IslandPage() {
           date: new Date().toISOString().slice(0, 10),
         }).then(() => undefined)
       },
+      onDevNextDay: () => {
+        if (!islandId) return Promise.reject(new Error('Missing island id'))
+        return devGoodDayMut({
+          islandId,
+          phoneNumber: participantIdentity ?? undefined,
+        }).then(() => undefined)
+      },
+      onDevNextDayBad: () => {
+        if (!islandId) return Promise.reject(new Error('Missing island id'))
+        return devBadDayMut({
+          islandId,
+          phoneNumber: participantIdentity ?? undefined,
+        }).then(() => undefined)
+      },
+      onDevLevelUp: () => {
+        if (!islandId) return Promise.reject(new Error('Missing island id'))
+        return devLevelUpMut({ islandId }).then(() => undefined)
+      },
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [islandDetails, islandGoals, islandBuildings, todayCheckIns, phone, userEmail, participantIdentity, islandId, checkInMut, placeBuildingMut])
+  }, [islandDetails, islandGoals, islandBuildings, dailyCheckIns, phone, userEmail, participantIdentity, islandId, checkInMut, placeBuildingMut, devGoodDayMut, devBadDayMut, devLevelUpMut])
 
   if (!islandId) {
     return (

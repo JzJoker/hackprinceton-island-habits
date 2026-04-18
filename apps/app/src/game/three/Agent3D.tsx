@@ -14,8 +14,10 @@ interface Props {
   isSelected: boolean;
   islandRadius?: number;
   onPositionUpdate?: (pos: THREE.Vector3) => void;
+  timeOffsetMs?: number;
   gossipText?: string | null;
   gossipFrozenFacingPos?: THREE.Vector3 | null;
+  gossipApproachTarget?: THREE.Vector3 | null;
 }
 
 const hashAgentId = (input: string): number => {
@@ -30,7 +32,20 @@ const hashAgentId = (input: string): number => {
 const smoothStep = (t: number) => t * t * (3 - 2 * t);
 
 /* ── Chibi-style cozy villager agent ──────────────────── */
-export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelected, islandRadius = 7.0, onPositionUpdate, gossipText, gossipFrozenFacingPos }: Props) => {
+export const Agent3D = ({
+  agent,
+  waypoints,
+  buildings,
+  scenery,
+  onClick,
+  isSelected,
+  islandRadius = 7.0,
+  onPositionUpdate,
+  timeOffsetMs = 0,
+  gossipText,
+  gossipFrozenFacingPos,
+  gossipApproachTarget,
+}: Props) => {
   const group = useRef<THREE.Group>(null);
   const bodyGroup = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Mesh>(null);
@@ -69,6 +84,7 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
 
   useFrame((_state, delta) => {
     if (!group.current) return;
+    const nowMs = Date.now() + timeOffsetMs;
 
     // ── Gossip freeze mode: stop movement, face partner ──
     if (gossipFrozenFacingPos) {
@@ -83,30 +99,48 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
       if (rightLeg.current) rightLeg.current.rotation.x = 0;
       if (leftArm.current) { leftArm.current.rotation.x = 0; leftArm.current.rotation.z = 0; }
       if (rightArm.current) { rightArm.current.rotation.x = 0; rightArm.current.rotation.z = 0; }
-      if (bodyGroup.current) { bodyGroup.current.position.y = Math.sin(Date.now() * 0.002) * 0.008; bodyGroup.current.rotation.z = 0; }
+      if (bodyGroup.current) { bodyGroup.current.position.y = Math.sin(nowMs * 0.002) * 0.008; bodyGroup.current.rotation.z = 0; }
       return;
     }
 
-    const route = orderedWaypoints.length > 0 ? orderedWaypoints : [agent.home];
-    const routeLen = route.length;
     const pace = 0.085 + (agent.mood / 100) * 0.045;
-    const worldTime = Date.now() / 1000;
-    const scenicPhase = sceneryCountRef.current * 0.001;
-    const travel = worldTime * pace + seed * routeLen + scenicPhase;
-    const seg = ((travel % routeLen) + routeLen) % routeLen;
-    const segIdx = Math.floor(seg);
-    const nextIdx = (segIdx + 1) % routeLen;
-    const routeT = smoothStep(seg - segIdx);
+    let direction = new THREE.Vector2(0, 0);
 
-    const start = route[segIdx] ?? agent.home;
-    const end = route[nextIdx] ?? start;
-    const direction = new THREE.Vector2(end[0] - start[0], end[1] - start[1]);
+    if (gossipApproachTarget) {
+      // ── Approach mode: walk toward another agent ──
+      const dx = gossipApproachTarget.x - pos.current.x;
+      const dz = gossipApproachTarget.z - pos.current.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist > 0.15) {
+        const step = Math.min(pace * delta * 60 * delta, dist);
+        pos.current.x += (dx / dist) * step;
+        pos.current.z += (dz / dist) * step;
+        direction.set(dx, dz);
+        angle.current = Math.atan2(dx, dz);
+      }
+      pos.current.y = GROUND_Y;
+    } else {
+      // ── Normal mode: follow deterministic waypoint route ──
+      const route = orderedWaypoints.length > 0 ? orderedWaypoints : [agent.home];
+      const routeLen = route.length;
+      const worldTime = nowMs / 1000;
+      const scenicPhase = sceneryCountRef.current * 0.001;
+      const travel = worldTime * pace + seed * routeLen + scenicPhase;
+      const seg = ((travel % routeLen) + routeLen) % routeLen;
+      const segIdx = Math.floor(seg);
+      const nextIdx = (segIdx + 1) % routeLen;
+      const routeT = smoothStep(seg - segIdx);
 
-    pos.current.set(
-      start[0] + (end[0] - start[0]) * routeT,
-      GROUND_Y,
-      start[1] + (end[1] - start[1]) * routeT,
-    );
+      const start = route[segIdx] ?? agent.home;
+      const end = route[nextIdx] ?? start;
+      direction = new THREE.Vector2(end[0] - start[0], end[1] - start[1]);
+
+      pos.current.set(
+        start[0] + (end[0] - start[0]) * routeT,
+        GROUND_Y,
+        start[1] + (end[1] - start[1]) * routeT,
+      );
+    }
 
     // Optional "work mode": if agent gets very close to an active construction,
     // stop and face it so all clients display the same behavior.
@@ -148,7 +182,7 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
     const swing = walking ? Math.sin(t) * 0.45 : 0;
     const bounce = (walking || nearConstruction)
       ? Math.abs(Math.sin(t * 2)) * 0.035
-      : Math.sin(Date.now() * 0.002) * 0.008;
+      : Math.sin(nowMs * 0.002) * 0.008;
 
     if (leftLeg.current) leftLeg.current.rotation.x = nearConstruction ? 0 : swing;
     if (rightLeg.current) rightLeg.current.rotation.x = nearConstruction ? 0 : -swing;
@@ -493,10 +527,10 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
         </div>
       </Html>
 
-      {/* ── Gossip speech bubble ── */}
+      {/* ── Gossip speech bubble — portaled to body to stay above all UI ── */}
       {gossipText && (
-        <Html position={[0, 1.65, 0]} center distanceFactor={6} zIndexRange={[20, 10]}>
-          <div className="pointer-events-none relative bg-white rounded-2xl px-3 py-1.5 text-[11px] font-bold shadow-lg max-w-[150px] text-center leading-snug border border-neutral-200 animate-in zoom-in-75 duration-300 select-none">
+        <Html position={[0, 1.65, 0]} center distanceFactor={6} zIndexRange={[9999, 9999]} portal={{ current: document.body }}>
+          <div className="pointer-events-none relative bg-white rounded-2xl px-3 py-1.5 text-[11px] font-bold shadow-lg max-w-[150px] text-center leading-snug border border-neutral-200 select-none">
             {gossipText}
             <div className="absolute bottom-[-5px] left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-white border-r border-b border-neutral-200 rotate-45" />
           </div>

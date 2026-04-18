@@ -1,5 +1,96 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const clamp = (value: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, value));
+
+function utcDayStartMs(date: string): number {
+  const [y, m, d] = date.split("-").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
+    return NaN;
+  }
+  return Date.UTC(y, m - 1, d);
+}
+
+function computeDayCount(createdAtMs: number, date: string): number {
+  const targetDay = utcDayStartMs(date);
+  if (!Number.isFinite(targetDay)) return 1;
+  const created = new Date(createdAtMs);
+  const createdDay = Date.UTC(
+    created.getUTCFullYear(),
+    created.getUTCMonth(),
+    created.getUTCDate()
+  );
+  return Math.max(1, Math.floor((targetDay - createdDay) / ONE_DAY_MS) + 1);
+}
+
+function deriveStreakFromDates(dates: string[]): { streakDays: number; lastCheckInDate?: string } {
+  if (!dates.length) return { streakDays: 0 };
+  const uniqueDates = Array.from(new Set(dates)).sort((a, b) =>
+    utcDayStartMs(b) - utcDayStartMs(a)
+  );
+  let streakDays = 1;
+  let previous = utcDayStartMs(uniqueDates[0]);
+  for (let i = 1; i < uniqueDates.length; i += 1) {
+    const current = utcDayStartMs(uniqueDates[i]);
+    if (!Number.isFinite(current) || !Number.isFinite(previous)) break;
+    if (previous - current === ONE_DAY_MS) {
+      streakDays += 1;
+      previous = current;
+      continue;
+    }
+    break;
+  }
+  return { streakDays, lastCheckInDate: uniqueDates[0] };
+}
+
+async function getIslandMotivationFactor(
+  ctx: MutationCtx,
+  islandId: Id<"islands">,
+): Promise<number> {
+  const agents = await ctx.db
+    .query("agents")
+    .withIndex("by_island", (q) => q.eq("islandId", islandId))
+    .collect();
+  if (!agents.length) return 0;
+  const avgMood = agents.reduce((sum, agent) => sum + agent.motivation, 0) / agents.length;
+  return clamp((avgMood - 20) / 80, 0, 1);
+}
+
+async function advanceConstructingBuildingsByDays(
+  ctx: MutationCtx,
+  islandId: Id<"islands">,
+  motivationFactor: number,
+  days: number,
+) {
+  if (days <= 0 || motivationFactor <= 0) return;
+  const buildings = await ctx.db
+    .query("buildings")
+    .withIndex("by_island", (q) => q.eq("islandId", islandId))
+    .filter((q) => q.eq(q.field("state"), "constructing"))
+    .collect();
+
+  for (const building of buildings) {
+    const dailyRate = motivationFactor / Math.max(1, building.buildTimeDays);
+    const newProgress = clamp(building.buildProgress + dailyRate * days, 0, 1);
+    const isComplete = newProgress >= 1 && building.buildProgress < 1;
+    await ctx.db.patch(building._id, {
+      buildProgress: newProgress,
+      ...(isComplete ? { state: "complete", completedAt: Date.now() } : {}),
+    });
+    if (isComplete) {
+      await ctx.db.insert("events", {
+        islandId,
+        type: "build_complete",
+        payload: { buildingId: building._id, type: building.type },
+        timestamp: Date.now(),
+      });
+    }
+  }
+}
 
 // Add goals for a user on an island
 export const addGoals = mutation({
@@ -135,11 +226,50 @@ export const checkIn = mutation({
     const island = await ctx.db.get(args.islandId);
     if (island) {
       const newXp = island.xp + 1;
-      await ctx.db.patch(args.islandId, {
+      const islandPatch: {
+        xp: number;
+        currency: number;
+        islandLevel: number;
+        lastCheckInDate?: string;
+        streakDays?: number;
+        dayCount?: number;
+      } = {
         xp: newXp,
         currency: island.currency + 10,
         islandLevel: Math.floor(newXp / 20),
-      });
+      };
+
+      const currentDayMs = utcDayStartMs(args.date);
+      const lastDayMs = island.lastCheckInDate ? utcDayStartMs(island.lastCheckInDate) : NaN;
+      let advancedDays = 0;
+      if (
+        Number.isFinite(currentDayMs) &&
+        (!Number.isFinite(lastDayMs) || currentDayMs > lastDayMs)
+      ) {
+        advancedDays = Number.isFinite(lastDayMs)
+          ? Math.max(1, Math.floor((currentDayMs - lastDayMs) / ONE_DAY_MS))
+          : 1;
+        islandPatch.lastCheckInDate = args.date;
+        islandPatch.streakDays =
+          Number.isFinite(lastDayMs) && currentDayMs - lastDayMs === ONE_DAY_MS
+            ? (island.streakDays ?? 0) + 1
+            : 1;
+        islandPatch.dayCount = Math.max(
+          island.dayCount ?? 1,
+          computeDayCount(island.createdAt, args.date)
+        );
+      }
+
+      await ctx.db.patch(args.islandId, islandPatch);
+      if (advancedDays > 0) {
+        const motivationFactor = await getIslandMotivationFactor(ctx, args.islandId);
+        await advanceConstructingBuildingsByDays(
+          ctx,
+          args.islandId,
+          motivationFactor,
+          advancedDays,
+        );
+      }
     }
 
     const agent = await ctx.db
@@ -190,10 +320,23 @@ export const uncheckIn = mutation({
     const island = await ctx.db.get(args.islandId);
     if (island) {
       const newXp = Math.max(0, island.xp - 1);
+      const islandCheckIns = await ctx.db
+        .query("checkIns")
+        .withIndex("by_island_date", (q) => q.eq("islandId", args.islandId))
+        .collect();
+      const streak = deriveStreakFromDates(islandCheckIns.map((c) => c.date));
+      const dayCount = streak.lastCheckInDate
+        ? computeDayCount(island.createdAt, streak.lastCheckInDate)
+        : island.dayCount ?? 1;
       await ctx.db.patch(args.islandId, {
         xp: newXp,
         currency: Math.max(0, island.currency - 10),
         islandLevel: Math.floor(newXp / 20),
+        streakDays: streak.streakDays,
+        dayCount,
+        ...(streak.lastCheckInDate
+          ? { lastCheckInDate: streak.lastCheckInDate }
+          : { lastCheckInDate: undefined }),
       });
     }
 
@@ -231,5 +374,21 @@ export const getTodayCheckIns = query({
       .collect();
 
     return checkIns;
+  },
+});
+
+// Get all check-ins for an island on a given day.
+export const getIslandCheckInsByDate = query({
+  args: {
+    islandId: v.id("islands"),
+    date: v.string(),
+  },
+  async handler(ctx, args) {
+    return await ctx.db
+      .query("checkIns")
+      .withIndex("by_island_date", (q) =>
+        q.eq("islandId", args.islandId).eq("date", args.date)
+      )
+      .collect();
   },
 });

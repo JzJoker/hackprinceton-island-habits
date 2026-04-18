@@ -47,8 +47,12 @@ def call_k2_json(system: str, user: str, max_tokens: int = 200) -> dict:
     raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
     # Strip markdown code fences
     raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
-    # K2 sometimes emits the schema template before the real answer.
-    # Try each flat {...} block from last to first to find a parseable object.
+    # Try parsing the full string first (handles nested structures like {"lines": [...]})
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    # Fall back: try each flat {...} block from last to first
     for m in reversed(list(re.finditer(r"\{[^{}]+\}", raw, re.DOTALL))):
         try:
             return json.loads(m.group(0))
