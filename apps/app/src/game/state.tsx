@@ -174,6 +174,8 @@ interface GameState {
   toast: string | null;
   showToast: (msg: string) => void;
   islandName: string;
+  trackAgent: boolean;
+  setTrackAgent: (v: boolean) => void;
 }
 
 export interface GameBootstrapData {
@@ -346,6 +348,7 @@ export const GameProvider = ({
       graduatedAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
     },
   ]);
+  const [trackAgent, setTrackAgent] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isVisiting, setIsVisiting] = useState(false);
   const [viewingEra, setViewingEra] = useState<number | null>(null);
@@ -457,6 +460,7 @@ export const GameProvider = ({
       chats, sendChat,
       toast, showToast,
       islandName,
+      trackAgent, setTrackAgent,
     }}>
       {children}
     </Ctx.Provider>

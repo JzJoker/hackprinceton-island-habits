@@ -1,4 +1,5 @@
 import { useContext, useRef, useMemo } from "react";
+import type React from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Sky, Cloud, Clouds, Environment, ContactShadows, Float } from "@react-three/drei";
 import * as THREE from "three";
@@ -166,7 +167,26 @@ const WAYPOINTS: [number, number][] = [
 ];
 
 /* ── Main scene ──────────────────────────────────────── */
-const Scene = () => {
+/* ── Camera tracker — smoothly follows the you-agent ─── */
+const CameraTracker = ({
+  tracking,
+  agentPos,
+  controlsRef,
+}: {
+  tracking: boolean;
+  agentPos: React.MutableRefObject<THREE.Vector3>;
+  controlsRef: React.MutableRefObject<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+}) => {
+  useFrame(() => {
+    if (!tracking || !controlsRef.current) return;
+    const target = new THREE.Vector3(agentPos.current.x, 0.5, agentPos.current.z);
+    controlsRef.current.target.lerp(target, 0.06);
+    controlsRef.current.update();
+  });
+  return null;
+};
+
+const Scene = ({ agentTrackPos }: { agentTrackPos: React.MutableRefObject<THREE.Vector3> }) => {
   const { agents, buildings, scenery, selectedAgent, setSelectedAgent, placingType, islandEra, viewingEra, islandHistory } = useGame();
   const displayEra = viewingEra ?? islandEra;
   const tier = ISLAND_TIERS[displayEra];
@@ -258,6 +278,7 @@ const Scene = () => {
             if (placingType) return;
             setSelectedAgent(a.id);
           }}
+          onPositionUpdate={a.isYou ? (p) => agentTrackPos.current.copy(p) : undefined}
         />
       ))}
 
@@ -270,6 +291,9 @@ const Scene = () => {
 export const Island3D = () => {
   const game = useContext(GameCtx);
   const isPlacing = !!game?.placingType;
+  const trackAgent = game?.trackAgent ?? false;
+  const agentTrackPos = useRef(new THREE.Vector3());
+  const controlsRef = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
 
   return (
     <Canvas
@@ -283,15 +307,17 @@ export const Island3D = () => {
       dpr={[1, 1.5]}
     >
       <GameCtx.Provider value={game}>
-        <Scene />
+        <Scene agentTrackPos={agentTrackPos} />
+        <CameraTracker tracking={trackAgent} agentPos={agentTrackPos} controlsRef={controlsRef} />
         <OrbitControls
+          ref={controlsRef}
           enablePan={false}
           minDistance={4}
           maxDistance={55}
           minPolarAngle={Math.PI / 6}
           maxPolarAngle={Math.PI / 2.3}
           target={[0, 0.5, 0]}
-          autoRotate={!isPlacing}
+          autoRotate={!isPlacing && !trackAgent}
           autoRotateSpeed={0.22}
           enableDamping
           dampingFactor={0.08}

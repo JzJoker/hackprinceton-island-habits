@@ -14,12 +14,13 @@ interface Props {
   onClick: () => void;
   isSelected: boolean;
   islandRadius?: number;
+  onPositionUpdate?: (pos: THREE.Vector3) => void;
 }
 
 const AGENT_RADIUS = 0.32;
 
 /* ── Chibi-style cozy villager agent ──────────────────── */
-export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelected, islandRadius = 7.0 }: Props) => {
+export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelected, islandRadius = 7.0, onPositionUpdate }: Props) => {
   const group = useRef<THREE.Group>(null);
   const bodyGroup = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Mesh>(null);
@@ -137,6 +138,7 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
 
     group.current.position.copy(pos.current);
     group.current.rotation.y = angle.current;
+    onPositionUpdate?.(pos.current);
 
     // Walk animation
     walkCycle.current += delta * (walking ? speed * 12 : 0);

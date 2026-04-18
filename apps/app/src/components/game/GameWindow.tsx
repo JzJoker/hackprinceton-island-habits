@@ -14,6 +14,23 @@ import { MobilePlacingHUD } from "./MobilePlacingHUD";
 import { DevPanel } from "./DevPanel";
 import { useGame } from "@/game/state";
 
+const TrackAgentButton = () => {
+  const { trackAgent, setTrackAgent, viewingEra } = useGame();
+  if (viewingEra !== null) return null;
+  return (
+    <div className="absolute bottom-24 right-4 sm:right-auto sm:left-4 pointer-events-auto">
+      <button
+        onClick={() => setTrackAgent(!trackAgent)}
+        className={`hud-panel px-3 py-2 text-xs font-bold rounded-xl active:scale-95 transition shadow-float ${
+          trackAgent ? "btn-game-coral" : "opacity-80"
+        }`}
+      >
+        {trackAgent ? "🎯 Tracking" : "🎯 Track Me"}
+      </button>
+    </div>
+  );
+};
+
 const VisitBanner = () => {
   const { viewingEra, visitIsland, islandHistory } = useGame();
   if (viewingEra === null) return null;
@@ -98,6 +115,7 @@ export const GameWindow = () => (
         <TopBar />
         <QuestLog />
         <ActionDock />
+        <TrackAgentButton />
       </div>
 
       {/* Dev panel — desktop only, sits flush below dock */}
