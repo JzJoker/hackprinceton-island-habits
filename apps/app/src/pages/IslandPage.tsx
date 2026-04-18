@@ -290,9 +290,9 @@ export function IslandPage() {
       ),
       buildings,
       onBuildingPlaced: (type, x, y, cost, days) => {
-        if (!islandId) return
+        if (!islandId) return Promise.reject(new Error('Missing island id'))
         const placedBy = participantIdentity || 'unknown'
-        placeBuildingMut({
+        return placeBuildingMut({
           islandId,
           type,
           gridX: x,
@@ -300,7 +300,7 @@ export function IslandPage() {
           costPaid: cost,
           placedBy,
           buildTimeDays: days,
-        }).catch(console.error)
+        })
       },
       onGoalCompleted: (goalId) => {
         if (!islandId || !participantIdentity) return

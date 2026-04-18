@@ -37,7 +37,7 @@ export const createIsland = mutation({
       tier: 1,
       islandLevel: 0,
       xp: 0,
-      currency: 0,
+      currency: 300,
       difficulty: "normal",
       gridSize: {
         width: 10,

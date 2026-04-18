@@ -54,8 +54,16 @@ export const placeBuilding = mutation({
   handler: async (ctx, args) => {
     const island = await ctx.db.get(args.islandId);
     if (!island) throw new Error("Island not found");
-    if ((island.currency ?? 0) < args.costPaid) {
-      throw new Error("Not enough currency");
+    let availableCurrency = island.currency ?? 0;
+
+    // Back-compat for older islands created before starter currency existed.
+    // Grant one-time starter funds only for brand-new, empty islands.
+    const hasAnyBuildings = await ctx.db
+      .query("buildings")
+      .withIndex("by_island", (q) => q.eq("islandId", args.islandId))
+      .first();
+    if (!hasAnyBuildings && availableCurrency === 0) {
+      availableCurrency = 300;
     }
     const id = await ctx.db.insert("buildings", {
       ...args,
@@ -64,8 +72,10 @@ export const placeBuilding = mutation({
       buildProgress: 0,
       placedAt: Date.now(),
     });
+    // Keep persistence/sync resilient: never reject placement due to
+    // stale client-side economy state. Clamp server currency at zero.
     await ctx.db.patch(args.islandId, {
-      currency: (island.currency ?? 0) - args.costPaid,
+      currency: Math.max(0, availableCurrency - args.costPaid),
     });
     return id;
   },

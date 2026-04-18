@@ -243,7 +243,7 @@ export interface GameBootstrapData {
   agents?: Agent[];
   goals?: Goal[];
   buildings?: Building[];
-  onBuildingPlaced?: (type: string, x: number, y: number, cost: number, days: number) => void;
+  onBuildingPlaced?: (type: string, x: number, y: number, cost: number, days: number) => void | Promise<unknown>;
   onGoalCompleted?: (goalId: string) => void | Promise<void>;
 }
 
@@ -462,11 +462,41 @@ export const GameProvider = ({
     const result = scorePlacement(placingType, pos, buildings, scenery, currentRadius);
     if (!result.valid) { showToast(result.reason || "Can't place here"); return false; }
     if (coins < opt.cost) { showToast("Not enough coins"); return false; }
-    setCoins((c) => c - opt.cost);
-    setBuildings((bs) => [...bs, { id: `b${Date.now()}`, type: placingType, pos, district: "main", score: result.score, buildProgress: 0, buildTime: opt.buildDays }]);
-    onBuildingPlacedRef.current?.(placingType, pos[0], pos[1], opt.cost, opt.buildDays);
+    const pendingId = `pending-${Date.now()}`;
     setPlacingType(null);
-    showToast(`+${result.score} harmony · ${opt.name} built!`);
+    setCoins((c) => c - opt.cost);
+    setBuildings((bs) => [
+      ...bs,
+      {
+        id: pendingId,
+        type: placingType,
+        pos,
+        district: "main",
+        score: result.score,
+        buildProgress: 0,
+        buildTime: opt.buildDays,
+      },
+    ]);
+
+    const persist = onBuildingPlacedRef.current;
+    if (!persist) {
+      showToast(`+${result.score} harmony · ${opt.name} built!`);
+      return true;
+    }
+
+    Promise.resolve(persist(placingType, pos[0], pos[1], opt.cost, opt.buildDays))
+      .then(() => {
+        // Convex sync bridge will replace pending entries with canonical records.
+        showToast(`+${result.score} harmony · ${opt.name} built!`);
+      })
+      .catch((err) => {
+        console.error("Failed to persist building placement", err);
+        setBuildings((bs) => bs.filter((b) => b.id !== pendingId));
+        setCoins((c) => c + opt.cost);
+        const message = err instanceof Error ? err.message : "Failed to place building";
+        showToast(message);
+      });
+
     return true;
   }, [placingType, buildings, scenery, coins, islandEra, showToast]);
 
@@ -549,6 +579,25 @@ export const GameProvider = ({
     }
 
     setGoals((gs) => gs.map((goal) => goal.id === id ? { ...goal, done: true } : goal));
+    showToast(`Syncing check-in for "${goalToComplete.text}"...`);
+
+    const persist = onGoalCompletedRef.current;
+    if (persist) {
+      Promise.resolve(persist(id))
+        .then(() => {
+          showToast(`${goalToComplete.text} ✓ saved`);
+        })
+        .catch((err) => {
+          console.error("Failed to persist goal completion", err);
+          setGoals((gs) => gs.map((goal) => goal.id === id ? { ...goal, done: false } : goal));
+          const message = err instanceof Error ? err.message : "Failed to save check-in";
+          showToast(message);
+        });
+      setPendingCheckIn(null);
+      return;
+    }
+
+    // Local-only fallback when no backend callback is wired.
     setCoins((c) => c + goalToComplete.reward);
     setXp((prevXp) => {
       const newXp = prevXp + 5;
@@ -565,13 +614,6 @@ export const GameProvider = ({
     ));
     showToast(`+${goalToComplete.reward} coins · mood +6 🌟 · ${goalToComplete.text} ✓`);
     setPendingCheckIn(null);
-
-    const persist = onGoalCompletedRef.current;
-    if (persist) {
-      Promise.resolve(persist(id)).catch((err) => {
-        console.error("Failed to persist goal completion", err);
-      });
-    }
   }, [goals, showToast]);
 
   const addGoal = useCallback((text: string, reward: number, photo?: boolean) => {
