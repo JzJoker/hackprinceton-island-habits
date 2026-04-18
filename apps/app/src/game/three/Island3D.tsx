@@ -375,42 +375,49 @@ const CameraTracker = ({
   return null;
 };
 
-/* ── Proximity detector — fires gossip when agents meet ── */
-const ProximityDetector = ({
+/* ── Gossip scheduler — periodically walks one agent to another ── */
+const GossipScheduler = ({
   agents,
+  activeConv,
   agentPositions,
+  onApproachIntent,
   onGossip,
 }: {
   agents: Agent[];
+  activeConv: ActiveConv | null;
   agentPositions: MutableRefObject<Map<string, THREE.Vector3>>;
+  onApproachIntent: (aId: string | null, bId: string | null) => void;
   onGossip: (a: Agent, b: Agent) => void;
 }) => {
-  const timers = useRef(new Map<string, number>());
-  const cooldowns = useRef(new Map<string, number>());
+  const timer = useRef(0);
+  const nextIn = useRef(20 + Math.random() * 40); // first gossip in 20-60s
+  const intent = useRef<{ aId: string; bId: string } | null>(null);
+
   useFrame((_s, delta) => {
-    const now = Date.now();
-    for (let i = 0; i < agents.length; i++) {
-      for (let j = i + 1; j < agents.length; j++) {
-        const a = agents[i], b = agents[j];
-        if (!a || !b) continue;
-        const key = `${a.id}:${b.id}`;
-        const posA = agentPositions.current.get(a.id);
-        const posB = agentPositions.current.get(b.id);
-        if (!posA || !posB) continue;
-        if (posA.distanceTo(posB) < 1.5) {
-          timers.current.set(key, (timers.current.get(key) ?? 0) + delta);
-          const sustained = (timers.current.get(key) ?? 0) >= 2.0;
-          const cooled = now - (cooldowns.current.get(key) ?? 0) > 60_000;
-          if (sustained && cooled) {
-            cooldowns.current.set(key, now);
-            timers.current.set(key, 0);
-            onGossip(a, b);
-          }
-        } else {
-          timers.current.set(key, 0);
-        }
+    if (activeConv) return; // pause while conversation is active
+
+    if (intent.current) {
+      const posA = agentPositions.current.get(intent.current.aId);
+      const posB = agentPositions.current.get(intent.current.bId);
+      if (posA && posB && posA.distanceTo(posB) < 0.8) {
+        const agentA = agents.find((a) => a.id === intent.current!.aId);
+        const agentB = agents.find((a) => a.id === intent.current!.bId);
+        intent.current = null;
+        onApproachIntent(null, null);
+        if (agentA && agentB) onGossip(agentA, agentB);
       }
+      return; // don't tick schedule timer while approaching
     }
+
+    timer.current += delta;
+    if (timer.current < nextIn.current || agents.length < 2) return;
+
+    const shuffled = [...agents].sort(() => Math.random() - 0.5);
+    const [a, b] = shuffled;
+    intent.current = { aId: a.id, bId: b.id };
+    onApproachIntent(a.id, b.id);
+    timer.current = 0;
+    nextIn.current = 30 + Math.random() * 60;
   });
   return null;
 };
@@ -447,12 +454,14 @@ const Scene = ({
   const agentPositions = useRef(new Map<string, THREE.Vector3>());
   const [activeConv, setActiveConv] = useState<ActiveConv | null>(null);
   const [gossipBubbles, setGossipBubbles] = useState<Map<string, string>>(new Map());
+  const [approachIntent, setApproachIntent] = useState<{ aId: string; bId: string } | null>(null);
 
   const onGossip = useCallback((agentA: Agent, agentB: Agent) => {
     const posA = agentPositions.current.get(agentA.id)?.clone() ?? new THREE.Vector3();
     const posB = agentPositions.current.get(agentB.id)?.clone() ?? new THREE.Vector3();
 
-    // Freeze both agents immediately
+    // Freeze both agents immediately, clear any approach intent
+    setApproachIntent(null);
     setActiveConv({ agentAId: agentA.id, agentBId: agentB.id, agentAPosCapture: posA, agentBPosCapture: posB });
 
     void fetch(`${BACKEND_URL}${GOSSIP_ENDPOINT}`, {
@@ -565,11 +574,22 @@ const Scene = ({
             activeConv?.agentBId === a.id ? activeConv.agentAPosCapture :
             null
           }
+          gossipApproachTarget={
+            approachIntent?.aId === a.id
+              ? (agentPositions.current.get(approachIntent.bId) ?? null)
+              : null
+          }
         />
       ))}
 
       {viewingEra === null && (
-        <ProximityDetector agents={agents} agentPositions={agentPositions} onGossip={onGossip} />
+        <GossipScheduler
+          agents={agents}
+          activeConv={activeConv}
+          agentPositions={agentPositions}
+          onApproachIntent={(aId, bId) => setApproachIntent(aId && bId ? { aId, bId } : null)}
+          onGossip={onGossip}
+        />
       )}
 
       {placingType && <PlacementGhost />}

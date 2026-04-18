@@ -16,6 +16,7 @@ interface Props {
   onPositionUpdate?: (pos: THREE.Vector3) => void;
   gossipText?: string | null;
   gossipFrozenFacingPos?: THREE.Vector3 | null;
+  gossipApproachTarget?: THREE.Vector3 | null;
 }
 
 const hashAgentId = (input: string): number => {
@@ -30,7 +31,7 @@ const hashAgentId = (input: string): number => {
 const smoothStep = (t: number) => t * t * (3 - 2 * t);
 
 /* ── Chibi-style cozy villager agent ──────────────────── */
-export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelected, islandRadius = 7.0, onPositionUpdate, gossipText, gossipFrozenFacingPos }: Props) => {
+export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelected, islandRadius = 7.0, onPositionUpdate, gossipText, gossipFrozenFacingPos, gossipApproachTarget }: Props) => {
   const group = useRef<THREE.Group>(null);
   const bodyGroup = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Mesh>(null);
@@ -87,26 +88,44 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
       return;
     }
 
-    const route = orderedWaypoints.length > 0 ? orderedWaypoints : [agent.home];
-    const routeLen = route.length;
     const pace = 0.085 + (agent.mood / 100) * 0.045;
-    const worldTime = Date.now() / 1000;
-    const scenicPhase = sceneryCountRef.current * 0.001;
-    const travel = worldTime * pace + seed * routeLen + scenicPhase;
-    const seg = ((travel % routeLen) + routeLen) % routeLen;
-    const segIdx = Math.floor(seg);
-    const nextIdx = (segIdx + 1) % routeLen;
-    const routeT = smoothStep(seg - segIdx);
+    let direction = new THREE.Vector2(0, 0);
 
-    const start = route[segIdx] ?? agent.home;
-    const end = route[nextIdx] ?? start;
-    const direction = new THREE.Vector2(end[0] - start[0], end[1] - start[1]);
+    if (gossipApproachTarget) {
+      // ── Approach mode: walk toward another agent ──
+      const dx = gossipApproachTarget.x - pos.current.x;
+      const dz = gossipApproachTarget.z - pos.current.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist > 0.15) {
+        const step = Math.min(pace * delta * 60 * delta, dist);
+        pos.current.x += (dx / dist) * step;
+        pos.current.z += (dz / dist) * step;
+        direction.set(dx, dz);
+        angle.current = Math.atan2(dx, dz);
+      }
+      pos.current.y = GROUND_Y;
+    } else {
+      // ── Normal mode: follow deterministic waypoint route ──
+      const route = orderedWaypoints.length > 0 ? orderedWaypoints : [agent.home];
+      const routeLen = route.length;
+      const worldTime = Date.now() / 1000;
+      const scenicPhase = sceneryCountRef.current * 0.001;
+      const travel = worldTime * pace + seed * routeLen + scenicPhase;
+      const seg = ((travel % routeLen) + routeLen) % routeLen;
+      const segIdx = Math.floor(seg);
+      const nextIdx = (segIdx + 1) % routeLen;
+      const routeT = smoothStep(seg - segIdx);
 
-    pos.current.set(
-      start[0] + (end[0] - start[0]) * routeT,
-      GROUND_Y,
-      start[1] + (end[1] - start[1]) * routeT,
-    );
+      const start = route[segIdx] ?? agent.home;
+      const end = route[nextIdx] ?? start;
+      direction = new THREE.Vector2(end[0] - start[0], end[1] - start[1]);
+
+      pos.current.set(
+        start[0] + (end[0] - start[0]) * routeT,
+        GROUND_Y,
+        start[1] + (end[1] - start[1]) * routeT,
+      );
+    }
 
     // Optional "work mode": if agent gets very close to an active construction,
     // stop and face it so all clients display the same behavior.
