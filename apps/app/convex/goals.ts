@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { defaultActivity, defaultMovementState } from "./lib/agentState";
+import { normalizeParticipantId } from "./lib/identity";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const clamp = (value: number, min: number, max: number) =>
@@ -60,6 +62,42 @@ async function getIslandMotivationFactor(
   return clamp((avgMood - 20) / 80, 0, 1);
 }
 
+async function ensureAgentForMember(
+  ctx: MutationCtx,
+  islandId: Id<"islands">,
+  participantId: string,
+) {
+  const existing = await ctx.db
+    .query("agents")
+    .withIndex("by_island_phone", (q) =>
+      q.eq("islandId", islandId).eq("phoneNumber", participantId)
+    )
+    .collect();
+
+  if (existing.length > 0) {
+    const [keep, ...dupes] = [...existing].sort((a, b) => a.createdAt - b.createdAt);
+    for (const duplicate of dupes) {
+      await ctx.db.delete(duplicate._id);
+    }
+    await ctx.db.patch(keep._id, {
+      currentActivity: keep.currentActivity ?? defaultActivity(),
+      movementState: keep.movementState ?? defaultMovementState(`${islandId}:${participantId}`),
+    });
+    return keep._id;
+  }
+
+  return await ctx.db.insert("agents", {
+    islandId,
+    phoneNumber: participantId,
+    personalityProfile: "",
+    motivation: 100,
+    reminderVariants: [],
+    currentActivity: defaultActivity(),
+    movementState: defaultMovementState(`${islandId}:${participantId}`),
+    createdAt: Date.now(),
+  });
+}
+
 async function advanceConstructingBuildingsByDays(
   ctx: MutationCtx,
   islandId: Id<"islands">,
@@ -100,17 +138,35 @@ export const addGoals = mutation({
     goals: v.array(v.string()),
   },
   async handler(ctx, args) {
+    const phoneNumber = normalizeParticipantId(args.phoneNumber);
     const goalIds: string[] = [];
+    const now = Date.now();
+    await ensureAgentForMember(ctx, args.islandId, phoneNumber);
+
+    const existingActive = await ctx.db
+      .query("goals")
+      .withIndex("by_island_phone_status", (q) =>
+        q.eq("islandId", args.islandId).eq("phoneNumber", phoneNumber).eq("status", "active")
+      )
+      .collect();
+    const normalizedExisting = new Set(
+      existingActive.map((goal) => goal.text.trim().toLowerCase()).filter(Boolean)
+    );
 
     for (const goalText of args.goals) {
+      const normalizedGoal = goalText.trim();
+      if (!normalizedGoal) continue;
+      const dedupeKey = normalizedGoal.toLowerCase();
+      if (normalizedExisting.has(dedupeKey)) continue;
       const goalId = await ctx.db.insert("goals", {
         islandId: args.islandId,
-        phoneNumber: args.phoneNumber,
-        text: goalText,
+        phoneNumber,
+        text: normalizedGoal,
         status: "active",
-        createdAt: Date.now(),
+        createdAt: now,
       });
       goalIds.push(goalId);
+      normalizedExisting.add(dedupeKey);
     }
 
     return goalIds;
@@ -151,10 +207,11 @@ export const getGoals = query({
     phoneNumber: v.string(),
   },
   async handler(ctx, args) {
+    const phoneNumber = normalizeParticipantId(args.phoneNumber);
     const goals = await ctx.db
       .query("goals")
       .withIndex("by_island_phone", (q) =>
-        q.eq("islandId", args.islandId).eq("phoneNumber", args.phoneNumber)
+        q.eq("islandId", args.islandId).eq("phoneNumber", phoneNumber)
       )
       .filter((q) => q.eq(q.field("status"), "active"))
       .collect();
@@ -188,15 +245,18 @@ export const checkIn = mutation({
     date: v.string(), // YYYY-MM-DD
   },
   async handler(ctx, args) {
+    const phoneNumber = normalizeParticipantId(args.phoneNumber);
+    const goal = await ctx.db.get(args.goalId);
+    if (!goal) throw new Error("Goal not found");
+    if (goal.islandId !== args.islandId) throw new Error("Goal does not belong to this island");
+    if (goal.phoneNumber !== phoneNumber) throw new Error("Goal belongs to a different member");
+    if (goal.status !== "active") throw new Error("Cannot check in an archived goal");
+
     // Check if already checked in today
     const existing = await ctx.db
       .query("checkIns")
-      .withIndex("by_goal", (q) => q.eq("goalId", args.goalId))
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("date"), args.date),
-          q.eq(q.field("phoneNumber"), args.phoneNumber)
-        )
+      .withIndex("by_goal_phone_date", (q) =>
+        q.eq("goalId", args.goalId).eq("phoneNumber", phoneNumber).eq("date", args.date)
       )
       .first();
 
@@ -207,7 +267,7 @@ export const checkIn = mutation({
     // Create check-in
     const checkInId = await ctx.db.insert("checkIns", {
       goalId: args.goalId,
-      phoneNumber: args.phoneNumber,
+      phoneNumber,
       islandId: args.islandId,
       date: args.date,
       completed: true,
@@ -218,7 +278,7 @@ export const checkIn = mutation({
     await ctx.db.insert("events", {
       islandId: args.islandId,
       type: "check_in",
-      payload: { goalId: args.goalId, phoneNumber: args.phoneNumber },
+      payload: { goalId: args.goalId, phoneNumber },
       timestamp: Date.now(),
     });
 
@@ -261,7 +321,8 @@ export const checkIn = mutation({
       }
 
       await ctx.db.patch(args.islandId, islandPatch);
-      if (advancedDays > 0) {
+      const canAdvanceBuildings = advancedDays > 0 && island.lastBuildAdvanceDate !== args.date;
+      if (canAdvanceBuildings) {
         const motivationFactor = await getIslandMotivationFactor(ctx, args.islandId);
         await advanceConstructingBuildingsByDays(
           ctx,
@@ -269,18 +330,31 @@ export const checkIn = mutation({
           motivationFactor,
           advancedDays,
         );
+        await ctx.db.patch(args.islandId, {
+          lastBuildAdvanceDate: args.date,
+        });
       }
     }
 
-    const agent = await ctx.db
+    const agentRows = await ctx.db
       .query("agents")
       .withIndex("by_island_phone", (q) =>
-        q.eq("islandId", args.islandId).eq("phoneNumber", args.phoneNumber)
+        q.eq("islandId", args.islandId).eq("phoneNumber", phoneNumber)
       )
-      .first();
-    if (agent) {
+      .collect();
+    if (agentRows.length > 0) {
+      const [agent, ...dupes] = [...agentRows].sort((a, b) => a.createdAt - b.createdAt);
+      for (const duplicate of dupes) {
+        await ctx.db.delete(duplicate._id);
+      }
       await ctx.db.patch(agent._id, {
         motivation: Math.min(100, agent.motivation + 1),
+        currentActivity: "completed_goal",
+        movementState: {
+          ...(agent.movementState ?? defaultMovementState(`${args.islandId}:${phoneNumber}`)),
+          mode: "work",
+          updatedAt: Date.now(),
+        },
       });
     }
 
@@ -297,15 +371,18 @@ export const uncheckIn = mutation({
     date: v.string(), // YYYY-MM-DD
   },
   async handler(ctx, args) {
+    const phoneNumber = normalizeParticipantId(args.phoneNumber);
+    const goal = await ctx.db.get(args.goalId);
+    if (!goal) throw new Error("Goal not found");
+    if (goal.islandId !== args.islandId) throw new Error("Goal does not belong to this island");
+    if (goal.phoneNumber !== phoneNumber) throw new Error("Goal belongs to a different member");
+    if (goal.status !== "active") throw new Error("Cannot undo archived goal");
+
     // Find the existing check-in for this goal+phone+date
     const existing = await ctx.db
       .query("checkIns")
-      .withIndex("by_goal", (q) => q.eq("goalId", args.goalId))
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("date"), args.date),
-          q.eq(q.field("phoneNumber"), args.phoneNumber)
-        )
+      .withIndex("by_goal_phone_date", (q) =>
+        q.eq("goalId", args.goalId).eq("phoneNumber", phoneNumber).eq("date", args.date)
       )
       .first();
 
@@ -344,7 +421,7 @@ export const uncheckIn = mutation({
     const agent = await ctx.db
       .query("agents")
       .withIndex("by_island_phone", (q) =>
-        q.eq("islandId", args.islandId).eq("phoneNumber", args.phoneNumber)
+        q.eq("islandId", args.islandId).eq("phoneNumber", phoneNumber)
       )
       .first();
     if (agent) {
@@ -365,12 +442,13 @@ export const getTodayCheckIns = query({
     date: v.string(),
   },
   async handler(ctx, args) {
+    const phoneNumber = normalizeParticipantId(args.phoneNumber);
     const checkIns = await ctx.db
       .query("checkIns")
       .withIndex("by_island_date", (q) =>
         q.eq("islandId", args.islandId).eq("date", args.date)
       )
-      .filter((q) => q.eq(q.field("phoneNumber"), args.phoneNumber))
+      .filter((q) => q.eq(q.field("phoneNumber"), phoneNumber))
       .collect();
 
     return checkIns;

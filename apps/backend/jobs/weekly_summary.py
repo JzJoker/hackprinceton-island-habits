@@ -19,45 +19,54 @@ def weekly_summary():
 
     islands = db.query("jobQueries:islandsReadyForWeeklySummary")
     sent = 0
+    failed = 0
 
     # Fetch agents once per run so we can pick a logging agent per island.
     all_members = db.query("jobQueries:getActiveMembersWithGoals")
 
     for entry in islands:
-        island = entry["island"]
-        phones = entry["phones"]
-        events = entry["events"]
+        try:
+            island = entry["island"]
+            phones = entry["phones"]
+            events = entry["events"]
 
-        if not phones:
-            continue
+            if not phones:
+                continue
 
-        stats = _aggregate_stats(events, island)
-        narrative, reasoning = generate_weekly_summary(
-            stats["total_checkins"],
-            stats["total_misses"],
-            stats["builds_completed"],
-            stats["top_completer"] or "nobody",
-        )
-        if reasoning:
-            stats["reasoning"] = reasoning
+            stats = _aggregate_stats(events, island)
+            narrative, reasoning = generate_weekly_summary(
+                stats["total_checkins"],
+                stats["total_misses"],
+                stats["builds_completed"],
+                stats["top_completer"] or "nobody",
+            )
+            if reasoning:
+                stats["reasoning"] = reasoning
 
-        send_group_message(phones, narrative)
+            send_group_message(phones, narrative)
 
-        island_agent = next(
-            (e["agent"] for e in all_members if e["island"]["_id"] == island["_id"]),
-            None,
-        )
-        if island_agent:
+            island_agent = next(
+                (e["agent"] for e in all_members if e["island"]["_id"] == island["_id"]),
+                None,
+            )
+            if not island_agent:
+                details = db.query("islands:getIslandDetails", {"islandId": island["_id"]})
+                agents = details.get("agents") or []
+                island_agent = agents[0] if agents else None
             db.mutation("jobMutations:recordWeeklySummary", {
                 "islandId": island["_id"],
-                "agentId": island_agent["_id"],
+                "agentId": island_agent["_id"] if island_agent else None,
                 "content": narrative,
                 "stats": stats,
             })
 
-        sent += 1
+            sent += 1
+        except Exception as exc:
+            failed += 1
+            print(f"[weekly-summary] island failed: {exc}")
+            continue
 
-    return jsonify({"ok": True, "summaries_sent": sent})
+    return jsonify({"ok": True, "summaries_sent": sent, "failed": failed})
 
 
 def _aggregate_stats(events: list, island: dict) -> dict:
@@ -93,6 +102,4 @@ def _aggregate_stats(events: list, island: dict) -> dict:
         "top_misser": top_misser,
         "island_level": island.get("islandLevel", 1),
     }
-
-
 

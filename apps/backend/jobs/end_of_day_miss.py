@@ -18,60 +18,65 @@ def end_of_day_miss():
     unchecked = db.query("jobQueries:getUncheckedGoalsForDate", {"date": today})
     processed = 0
     skipped = 0
+    failed = 0
 
     for entry in unchecked:
-        goal = entry["goal"]
-        island = entry["island"]
-        phone_number = entry["phoneNumber"]
-        agent = entry["agent"]
+        try:
+            goal = entry["goal"]
+            island = entry["island"]
+            phone_number = entry["phoneNumber"]
+            agent = entry["agent"]
 
-        already_missed = db.query("jobQueries:missAlreadyRecorded", {
-            "goalId": goal["_id"],
-            "date": today,
-            "islandId": island["_id"],
-        })
-        if already_missed:
-            skipped += 1
-            continue
+            already_missed = db.query("jobQueries:missAlreadyRecorded", {
+                "goalId": goal["_id"],
+                "date": today,
+                "islandId": island["_id"],
+            })
+            if already_missed:
+                skipped += 1
+                continue
 
-        penalty = MOTIVATION_PENALTY.get(island["difficulty"], 10)
-        prev_motivation = agent["motivation"]
-        new_motivation = max(0, prev_motivation - penalty)
+            penalty = MOTIVATION_PENALTY.get(island["difficulty"], 10)
+            prev_motivation = agent["motivation"]
+            new_motivation = max(0, prev_motivation - penalty)
 
-        db.mutation("jobMutations:recordMiss", {
-            "goalId": goal["_id"],
-            "phoneNumber": phone_number,
-            "islandId": island["_id"],
-            "agentId": agent["_id"],
-            "newMotivation": new_motivation,
-            "date": today,
-        })
-
-        db.mutation("jobMutations:damageConstructingBuilding", {
-            "islandId": island["_id"],
-            "phoneNumber": phone_number,
-        })
-
-        # Broadcast low-motivation message if threshold just crossed
-        if new_motivation < 30 and prev_motivation >= 30:
-            message, reasoning = generate_low_motivation_message(agent["personalityProfile"], new_motivation)
-            phones = db.query("jobQueries:getIslandPhoneNumbers", {"islandId": island["_id"]})
-            send_group_message(phones, message)
-            
-            context = {"motivation": new_motivation}
-            if reasoning:
-                context["reasoning"] = reasoning
-                
-            db.mutation("jobMutations:logAiMessage", {
+            db.mutation("jobMutations:recordMiss", {
+                "goalId": goal["_id"],
+                "phoneNumber": phone_number,
+                "islandId": island["_id"],
                 "agentId": agent["_id"],
-                "channel": "imessage_group",
-                "content": message,
-                "context": context,
+                "newMotivation": new_motivation,
+                "date": today,
             })
 
-        processed += 1
+            db.mutation("jobMutations:damageConstructingBuilding", {
+                "islandId": island["_id"],
+                "phoneNumber": phone_number,
+            })
 
-    return jsonify({"ok": True, "processed": processed, "skipped": skipped})
+            # Broadcast low-motivation message if threshold just crossed
+            if new_motivation < 30 and prev_motivation >= 30:
+                message, reasoning = generate_low_motivation_message(agent["personalityProfile"], new_motivation)
+                phones = db.query("jobQueries:getIslandPhoneNumbers", {"islandId": island["_id"]})
+                send_group_message(phones, message)
 
+                context = {"motivation": new_motivation}
+                if reasoning:
+                    context["reasoning"] = reasoning
+
+                db.mutation("jobMutations:logAiMessage", {
+                    "agentId": agent["_id"],
+                    "channel": "imessage_group",
+                    "content": message,
+                    "context": context,
+                })
+
+            processed += 1
+        except Exception as exc:
+            failed += 1
+            print(f"[end-of-day-miss] failed for entry: {exc}")
+            continue
+
+    return jsonify({"ok": True, "processed": processed, "skipped": skipped, "failed": failed})
 
 

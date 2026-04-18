@@ -13,9 +13,12 @@ import type * as buildings from "../buildings.js";
 import type * as dev from "../dev.js";
 import type * as goals from "../goals.js";
 import type * as gossip from "../gossip.js";
+import type * as groupRooms from "../groupRooms.js";
 import type * as islands from "../islands.js";
 import type * as jobMutations from "../jobMutations.js";
 import type * as jobQueries from "../jobQueries.js";
+import type * as lib_agentState from "../lib/agentState.js";
+import type * as lib_identity from "../lib/identity.js";
 import type * as users from "../users.js";
 
 import type {
@@ -30,9 +33,12 @@ declare const fullApi: ApiFromModules<{
   dev: typeof dev;
   goals: typeof goals;
   gossip: typeof gossip;
+  groupRooms: typeof groupRooms;
   islands: typeof islands;
   jobMutations: typeof jobMutations;
   jobQueries: typeof jobQueries;
+  "lib/agentState": typeof lib_agentState;
+  "lib/identity": typeof lib_identity;
   users: typeof users;
 }>;
 

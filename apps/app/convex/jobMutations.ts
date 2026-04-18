@@ -103,7 +103,7 @@ export const advanceBuildProgress = mutation({
 export const recordWeeklySummary = mutation({
   args: {
     islandId: v.id("islands"),
-    agentId: v.id("agents"),
+    agentId: v.optional(v.id("agents")),
     content: v.string(),
     stats: v.any(),
   },
@@ -114,15 +114,18 @@ export const recordWeeklySummary = mutation({
       payload: { content, stats },
       timestamp: Date.now(),
     });
-    // Embed islandId in the aiMessages context so the client digest query
-    // can filter messages per island without a dedicated index.
-    await ctx.db.insert("aiMessages", {
-      agentId,
-      channel: "imessage_group",
-      content,
-      context: { ...(stats ?? {}), islandId },
-      sentAt: Date.now(),
-    });
+    if (agentId) {
+      await ctx.db.insert("aiMessages", {
+        agentId,
+        channel: "imessage_group",
+        content,
+        // Keep islandId in context so per-island digest queries can filter
+        // without an extra index.
+        context: { ...(stats ?? {}), islandId },
+        sentAt: Date.now(),
+      });
+    }
+
     // Mark this week as handled so islandsReadyForWeeklySummary skips it
     // until the next multiple-of-7 boundary.
     const island = await ctx.db.get(islandId);

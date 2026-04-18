@@ -118,7 +118,7 @@ function mapIslandGoalsToUiGoals(
 }
 
 function buildUiAgents(args: {
-  members: { phoneNumber: string }[]
+  members: { phoneNumber: string; displayName?: string | null }[]
   persistedAgents: { phoneNumber: string; motivation?: number; reminderVariants?: string[] }[]
   islandGoals: { phoneNumber: string; text: string }[] | undefined
   meCandidates: Set<string>
@@ -135,7 +135,7 @@ function buildUiAgents(args: {
   const persistedByPhone = new Map(args.persistedAgents.map((agent) => [agent.phoneNumber, agent]))
 
   return args.members
-    .filter((member): member is { phoneNumber: string } => Boolean(member?.phoneNumber))
+    .filter((member): member is { phoneNumber: string; displayName?: string | null } => Boolean(member?.phoneNumber))
     .map((member, index) => {
       const id = member.phoneNumber
       const hash = hashString(id)
@@ -146,9 +146,15 @@ function buildUiAgents(args: {
       const line = savedAgent?.reminderVariants?.[0] ?? `Let's make progress today.`
       const mood = Math.max(0, Math.min(100, savedAgent?.motivation ?? 70))
 
+      const clerkFirstName = member.displayName?.trim().split(/\s+/)[0]
+        ? titleCase(member.displayName!.trim().split(/\s+/)[0])
+        : null
+      const profileFirstName = args.displayNames?.get(id)?.trim().split(/\s+/)[0]
+        ? titleCase(args.displayNames!.get(id)!.trim().split(/\s+/)[0])
+        : null
       return {
         id,
-        name: args.displayNames?.get(id) ? `${args.displayNames.get(id)!.split(' ')[0]} Jr.` : participantDisplayName(id, index),
+        name: clerkFirstName || profileFirstName || participantDisplayName(id, index),
         img: image,
         skin: palette.skin,
         shirt: palette.shirt,

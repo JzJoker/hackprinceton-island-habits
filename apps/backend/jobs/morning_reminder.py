@@ -47,88 +47,91 @@ def morning_reminder():
     members = db.query("jobQueries:getActiveMembersWithGoals")
     sent = 0
     skipped = 0
+    failed = 0
 
     # Cache yesterday's team stats per island so we don't re-query for every
     # member of the same island.
     yesterday_cache: dict = {}
 
     for entry in members:
-        agent = entry["agent"]
-        phone_number = entry["phoneNumber"]
-        goals = entry["goals"]
-        island_id = entry["island"]["_id"]
+        try:
+            agent = entry["agent"]
+            phone_number = entry["phoneNumber"]
+            goals = entry["goals"]
+            island_id = entry["island"]["_id"]
 
-        already_sent = db.query("jobQueries:reminderSentToday", {
-            "agentId": agent["_id"],
-            "today": today,
-        })
-        if already_sent:
-            skipped += 1
+            already_sent = db.query("jobQueries:reminderSentToday", {
+                "agentId": agent["_id"],
+                "today": today,
+            })
+            if already_sent:
+                skipped += 1
+                continue
+
+            miss_streak = db.query("jobQueries:recentMissCount", {
+                "islandId": island_id,
+                "phoneNumber": phone_number,
+                "days": 7,
+            })
+
+            # Fetch-and-cache yesterday's island-wide stats.
+            if island_id not in yesterday_cache:
+                yesterday_cache[island_id] = db.query(
+                    "jobQueries:getYesterdayIslandStats",
+                    {"islandId": island_id, "date": yesterday},
+                ) or {"completed": [], "missed": []}
+            team_stats = yesterday_cache[island_id]
+
+            # Build a human-readable summary string the prompt can drop straight in.
+            completed_names = _format_name_list(team_stats.get("completed", []), "completed")
+            missed_names = _format_name_list(team_stats.get("missed", []), "missed")
+            parts = []
+            if completed_names:
+                parts.append(f"Yesterday {completed_names} hit their goals.")
+            if missed_names:
+                parts.append(f"{missed_names} missed theirs.")
+            team_recap = " ".join(parts) if parts else "Yesterday was quiet on the island."
+
+            goal_texts = [g["text"] for g in goals]
+            variants = agent.get("reminderVariants") or []
+            personality = agent.get("personalityProfile") or DEFAULT_PERSONALITY
+
+            # Only use pre-canned variants when yesterday had no notable signal.
+            can_use_variant = (
+                variants
+                and miss_streak < 3
+                and not completed_names
+                and not missed_names
+            )
+            if can_use_variant:
+                message = random.choice(variants)
+                reasoning = None
+            else:
+                message, reasoning = generate_morning_reminder(
+                    personality, goal_texts, miss_streak, team_recap
+                )
+
+            send_message(phone_number, message)
+
+            context = {
+                "date": today,
+                "missStreak": miss_streak,
+                "teamRecap": team_recap,
+            }
+            if reasoning:
+                context["reasoning"] = reasoning
+
+            db.mutation("jobMutations:logAiMessage", {
+                "agentId": agent["_id"],
+                "channel": "imessage_personal",
+                "content": message,
+                "context": context,
+            })
+            sent += 1
+        except Exception as exc:
+            failed += 1
+            print(f"[morning-reminder] failed for entry: {exc}")
             continue
 
-        miss_streak = db.query("jobQueries:recentMissCount", {
-            "islandId": island_id,
-            "phoneNumber": phone_number,
-            "days": 7,
-        })
-
-        # Fetch-and-cache yesterday's island-wide stats.
-        if island_id not in yesterday_cache:
-            yesterday_cache[island_id] = db.query(
-                "jobQueries:getYesterdayIslandStats",
-                {"islandId": island_id, "date": yesterday},
-            ) or {"completed": [], "missed": []}
-        team_stats = yesterday_cache[island_id]
-
-        # Build a human-readable summary string the prompt can drop straight in.
-        completed_names = _format_name_list(team_stats.get("completed", []), "completed")
-        missed_names = _format_name_list(team_stats.get("missed", []), "missed")
-        parts = []
-        if completed_names:
-            parts.append(f"Yesterday {completed_names} hit their goals.")
-        if missed_names:
-            parts.append(f"{missed_names} missed theirs.")
-        team_recap = " ".join(parts) if parts else "Yesterday was quiet on the island."
-
-        goal_texts = [g["text"] for g in goals]
-        variants = agent.get("reminderVariants") or []
-        personality = agent.get("personalityProfile") or DEFAULT_PERSONALITY
-
-        # Only use the pre-canned reminderVariants when nothing noteworthy
-        # happened yesterday — otherwise we always want K2 to weave the recap in.
-        can_use_variant = (
-            variants
-            and miss_streak < 3
-            and not completed_names
-            and not missed_names
-        )
-        if can_use_variant:
-            message = random.choice(variants)
-            reasoning = None
-        else:
-            message, reasoning = generate_morning_reminder(
-                personality, goal_texts, miss_streak, team_recap
-            )
-
-        send_message(phone_number, message)
-
-        context = {
-            "date": today,
-            "missStreak": miss_streak,
-            "teamRecap": team_recap,
-        }
-        if reasoning:
-            context["reasoning"] = reasoning
-
-        db.mutation("jobMutations:logAiMessage", {
-            "agentId": agent["_id"],
-            "channel": "imessage_personal",
-            "content": message,
-            "context": context,
-        })
-        sent += 1
-
-    return jsonify({"ok": True, "sent": sent, "skipped": skipped})
-
-
+    return jsonify({"ok": True, "sent": sent, "skipped": skipped, "failed": failed})
 

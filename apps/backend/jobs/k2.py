@@ -130,6 +130,28 @@ def roast_goal(player_name: str, proposed_goal: str) -> Tuple[str, Optional[str]
     return call_k2(_load("prompt_goal_roaster.md"), user, max_tokens=120)
 
 
+def generate_chat_reply(
+    player_name: str,
+    island_context: str,
+    history: list,
+    latest: str,
+) -> Tuple[str, Optional[str]]:
+    lines = []
+    for h in history[-12:]:
+        who = h.get("who") or "user"
+        txt = (h.get("text") or "").strip()
+        if txt:
+            lines.append(f"{who}: {txt}")
+    transcript = "\n".join(lines) if lines else "(no prior messages)"
+    user = (
+        f"Island context:\n{island_context}\n\n"
+        f"Sender: {player_name}\n\n"
+        f"Recent group chat (oldest→newest):\n{transcript}\n\n"
+        f"Latest message from {player_name}: {latest}"
+    )
+    return call_k2(_load("prompt_chat_reply.md"), user, max_tokens=200)
+
+
 def generate_agent_gossip(agent_a_personality: dict, agent_b_personality: dict, recent_events: list) -> Tuple[dict, Optional[str]]:
     user = (
         f"Agent A personality: {json.dumps(agent_a_personality)}\n"
