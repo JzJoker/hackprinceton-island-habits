@@ -19,8 +19,10 @@ import {
   parseCommand,
   senderAddress,
   dispatchKnownCommand,
+  handleChat,
   logFrame,
 } from "./router.js";
+import { appendMessage } from "./state/chat-history.js";
 import { startHttpServer } from "./server.js";
 
 async function main(): Promise<void> {
@@ -52,8 +54,20 @@ async function main(): Promise<void> {
 
     logFrame(time, space.id, senderLabel, kind, body, cmd.kind);
 
+    // Log every inbound message so the conversational fallback has context.
+    appendMessage(space.id, senderLabel, body);
+
     if (cmd.kind === "none") {
-      console.log(`└─ (no command matched — ignored)`);
+      if (!resolvedSender) {
+        console.log(`└─ (no command matched, no sender — ignored)`);
+        continue;
+      }
+      try {
+        await handleChat(space, resolvedSender, body, space.id);
+        console.log(`└─ 💬 chat reply for ${senderLabel}`);
+      } catch (err: any) {
+        console.error(`└─ ❌ chat reply for ${senderLabel} failed: ${err?.message ?? err}`);
+      }
       continue;
     }
 

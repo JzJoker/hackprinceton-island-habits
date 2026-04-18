@@ -12,6 +12,7 @@
 import { text } from "spectrum-ts";
 import { ConvexHttpClient } from "convex/browser";
 import { hasOnboarded, markOnboarded } from "./state/seen-spaces.js";
+import { appendMessage, getHistory } from "./state/chat-history.js";
 import "dotenv/config";
 
 // ── Env / config ──────────────────────────────────────────────────────
@@ -464,6 +465,58 @@ export async function handleUndo(space: any, sender: string, index: number, spac
     console.error("[/undo] failed:", err?.message ?? err);
     await space.send(text("Couldn't undo that check-in. Try again."));
   }
+}
+
+export async function handleChat(space: any, sender: string, body: string, spaceId: string): Promise<void> {
+  const island = await resolveSenderIsland(sender, spaceId);
+  let contextStr = "No island linked yet.";
+  let playerName = sender;
+
+  if (island) {
+    try {
+      const [goals, details] = await Promise.all([
+        fetchGoals(island._id, sender),
+        convex.query("islands:getIslandDetails" as any, { islandId: island._id }),
+      ]);
+      const member = (details?.members ?? []).find((m: any) => m.phoneNumber === sender);
+      if (member?.displayName) playerName = member.displayName.split(/\s+/)[0];
+      const goalLines = goals.length
+        ? goals.map((g, i) => `  ${i + 1}. ${g.text}`).join("\n")
+        : "  (none yet)";
+      contextStr =
+        `Island: ${island.name} (level ${island.islandLevel}, ${island.xp} XP)\n` +
+        `Sender goals:\n${goalLines}`;
+    } catch (err: any) {
+      console.error("[chat] failed to load context:", err?.message ?? err);
+    }
+  }
+
+  const history = getHistory(spaceId).slice(0, -1);
+
+  let reply = "";
+  try {
+    const res = await fetch(`${BACKEND_URL}/jobs/chat-reply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        player_name: playerName,
+        island_context: contextStr,
+        history: history.map((h) => ({ who: h.who, text: h.text })),
+        latest: body,
+      }),
+    });
+    if (!res.ok) throw new Error(`chat-reply HTTP ${res.status}`);
+    const data = (await res.json()) as { message?: string };
+    reply = (data.message ?? "").trim();
+  } catch (err: any) {
+    console.error("[chat] chat-reply failed:", err?.message ?? err);
+    return;
+  }
+
+  if (!reply || reply.toUpperCase() === "SKIP") return;
+
+  await space.send(text(reply));
+  appendMessage(spaceId, "agent", reply);
 }
 
 // ── Framed console log helper ─────────────────────────────────────────
