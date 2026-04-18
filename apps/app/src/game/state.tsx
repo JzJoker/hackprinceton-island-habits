@@ -417,7 +417,14 @@ export const GameProvider = ({
       const fresh = patch.agents!.find(x => x.id === agent.id);
       return fresh ? { ...agent, mood: fresh.mood } : agent;
     }));
-    if (patch.buildings !== undefined) setBuildings(patch.buildings);
+    if (patch.buildings !== undefined) setBuildings(prev =>
+      patch.buildings!.map(incoming => {
+        const local = prev.find(b => b.id === incoming.id);
+        return local
+          ? { ...incoming, buildProgress: Math.max(local.buildProgress, incoming.buildProgress) }
+          : incoming;
+      })
+    );
   }, []);
 
   const graduateIsland = useCallback(() => {
