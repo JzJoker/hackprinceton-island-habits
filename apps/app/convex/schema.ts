@@ -14,6 +14,7 @@ export default defineSchema({
     dayCount: v.optional(v.number()),
     lastCheckInDate: v.optional(v.string()),
     lastBuildTickAt: v.optional(v.number()),
+    lastBuildAdvanceDate: v.optional(v.string()),
     // Graduation era (0 = Pine Hollow, 1 = Amber Ridge, …). Undefined/0 for
     // islands created before this field existed — treated as era 0.
     era: v.optional(v.number()),
