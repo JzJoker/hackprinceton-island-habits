@@ -81,6 +81,7 @@ export default defineSchema({
     }),
     state: v.union(v.literal("constructing"), v.literal("complete"), v.literal("damaged")),
     buildProgress: v.number(),
+    buildTimeDays: v.number(),
     costPaid: v.number(),
     placedBy: v.string(),
     placedAt: v.number(),
@@ -113,5 +114,13 @@ export default defineSchema({
     content: v.string(),
     context: v.optional(v.string()),
     sentAt: v.number(),
-  }).index("by_agent", ["agentId"]),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_agent_sent", ["agentId", "sentAt"]),
+
+  sessions: defineTable({
+    token: v.string(),
+    userId: v.id("users"),
+    createdAt: v.number(),
+  }).index("by_token", ["token"]),
 });

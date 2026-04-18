@@ -7,9 +7,8 @@ from flask import jsonify
 
 from jobs import jobs_bp
 from jobs.convex_client import get_client
+from jobs.photon import send_message
 
-PHOTON_API_URL = os.environ.get("PHOTON_API_URL", "")
-PHOTON_API_KEY = os.environ.get("PHOTON_API_KEY", "")
 K2_API_URL = os.environ.get("K2_API_URL", "")
 K2_API_KEY = os.environ.get("K2_API_KEY", "")
 
@@ -50,7 +49,7 @@ def morning_reminder():
         else:
             message = _generate_k2_reminder(agent["personalityProfile"], goal_texts, miss_streak)
 
-        _send_photon_message(user["phoneNumber"], message)
+        send_message(user["phoneNumber"], message)
 
         db.mutation("jobMutations:logAiMessage", {
             "agentId": agent["_id"],
@@ -84,11 +83,3 @@ def _generate_k2_reminder(personality: dict, goal_texts: list[str], miss_streak:
     return resp.json()["choices"][0]["message"]["content"].strip()
 
 
-def _send_photon_message(phone: str, message: str) -> None:
-    resp = requests.post(
-        f"{PHOTON_API_URL}/send",
-        headers={"Authorization": f"Bearer {PHOTON_API_KEY}", "Content-Type": "application/json"},
-        json={"to": phone, "message": message},
-        timeout=30,
-    )
-    resp.raise_for_status()

@@ -1,5 +1,6 @@
 import { createApp } from "./photon/app.js";
 import { runMessageLoop } from "./photon/handlers.js";
+import { startHttpServer } from "./server.js";
 
 async function main() {
   const app = await createApp();
@@ -12,6 +13,7 @@ async function main() {
   console.log("  /start   - Create a new island game for your group");
   console.log("\n");
 
+  startHttpServer(app);
   await runMessageLoop(app);
 }
 

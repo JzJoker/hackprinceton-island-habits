@@ -6,9 +6,8 @@ from flask import jsonify
 
 from jobs import jobs_bp
 from jobs.convex_client import get_client
+from jobs.photon import send_group_message
 
-PHOTON_API_URL = os.environ.get("PHOTON_API_URL", "")
-PHOTON_API_KEY = os.environ.get("PHOTON_API_KEY", "")
 K2_API_URL = os.environ.get("K2_API_URL", "")
 K2_API_KEY = os.environ.get("K2_API_KEY", "")
 
@@ -60,7 +59,7 @@ def end_of_day_miss():
         if new_motivation < 30 and prev_motivation >= 30:
             message = _generate_low_motivation_message(agent["personalityProfile"], new_motivation)
             phones = db.query("jobQueries:getIslandPhoneNumbers", {"islandId": island["_id"]})
-            _send_photon_group(phones, message)
+            send_group_message(phones, message)
             db.mutation("jobMutations:logAiMessage", {
                 "agentId": agent["_id"],
                 "channel": "imessage_group",
@@ -91,11 +90,3 @@ def _generate_low_motivation_message(personality: dict, motivation: int) -> str:
     return resp.json()["choices"][0]["message"]["content"].strip()
 
 
-def _send_photon_group(phones: list[str], message: str) -> None:
-    resp = requests.post(
-        f"{PHOTON_API_URL}/send-group",
-        headers={"Authorization": f"Bearer {PHOTON_API_KEY}", "Content-Type": "application/json"},
-        json={"participants": phones, "message": message},
-        timeout=30,
-    )
-    resp.raise_for_status()

@@ -5,9 +5,8 @@ from flask import jsonify
 
 from jobs import jobs_bp
 from jobs.convex_client import get_client
+from jobs.photon import send_group_message
 
-PHOTON_API_URL = os.environ.get("PHOTON_API_URL", "")
-PHOTON_API_KEY = os.environ.get("PHOTON_API_KEY", "")
 K2_API_URL = os.environ.get("K2_API_URL", "")
 K2_API_KEY = os.environ.get("K2_API_KEY", "")
 
@@ -31,7 +30,7 @@ def weekly_summary():
         tone = _determine_tone(stats["completion_rate"])
         narrative = _generate_narrative(stats, tone, island["name"])
 
-        _send_photon_group(phones, narrative)
+        send_group_message(phones, narrative)
 
         # Use first agent on island for logging
         agents = db.query("jobQueries:getActiveMembersWithGoals")
@@ -116,11 +115,3 @@ def _generate_narrative(stats: dict, tone: str, island_name: str) -> str:
     return resp.json()["choices"][0]["message"]["content"].strip()
 
 
-def _send_photon_group(phones: list[str], message: str) -> None:
-    resp = requests.post(
-        f"{PHOTON_API_URL}/send-group",
-        headers={"Authorization": f"Bearer {PHOTON_API_KEY}", "Content-Type": "application/json"},
-        json={"participants": phones, "message": message},
-        timeout=30,
-    )
-    resp.raise_for_status()
