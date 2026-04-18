@@ -223,15 +223,14 @@ export async function handleGoals(space: any, sender: string): Promise<void> {
   await space.send(text(`Your goals on ${island.name}:\n${lines.join("\n")}`));
 }
 
-async function roastGoal(playerName: string, proposedGoal: string): Promise<string> {
+async function roastGoal(playerName: string, proposedGoal: string): Promise<{ message: string, reasoning?: string }> {
   const res = await fetch(`${BACKEND_URL}/jobs/roast-goal`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ player_name: playerName, proposed_goal: proposedGoal }),
   });
   if (!res.ok) throw new Error(`roast-goal HTTP ${res.status}`);
-  const body = await res.json() as { message: string };
-  return body.message;
+  return await res.json() as { message: string, reasoning?: string };
 }
 
 export async function handleAdd(space: any, sender: string, goalText: string): Promise<void> {
@@ -246,8 +245,11 @@ export async function handleAdd(space: any, sender: string, goalText: string): P
   }
 
   let roastMsg = "";
+  let roastReasoning = "";
   try {
-    roastMsg = await roastGoal(sender, goalText);
+    const resp = await roastGoal(sender, goalText);
+    roastMsg = resp.message;
+    if (resp.reasoning) roastReasoning = resp.reasoning;
   } catch (err: any) {
     console.error("[/add] roast-goal failed, skipping:", err?.message ?? err);
   }
@@ -262,7 +264,25 @@ export async function handleAdd(space: any, sender: string, goalText: string): P
   const count = goals.length;
   const plural = count === 1 ? "" : "s";
   const fallback = `🌱 Planted "${goalText}" on ${island.name}. ${count} goal${plural} growing.`;
-  await space.send(text(roastMsg || fallback));
+  const finalMessage = roastMsg || fallback;
+  await space.send(text(finalMessage));
+
+  if (roastMsg) {
+    try {
+      const details: any = await convex.query("islands:getIslandDetails" as any, { islandId: island._id });
+      const agent = details.agents?.find((a: any) => a.phoneNumber === sender);
+      if (agent) {
+        await convex.mutation("jobMutations:logAiMessage" as any, {
+          agentId: agent._id,
+          channel: "imessage_personal",
+          content: finalMessage,
+          context: roastReasoning ? { reasoning: roastReasoning } : {},
+        });
+      }
+    } catch (e) {
+      console.error("[/add] failed to log ai message:", e);
+    }
+  }
 }
 
 export async function handleDrop(space: any, sender: string, index: number): Promise<void> {
