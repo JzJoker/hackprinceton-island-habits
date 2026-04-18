@@ -104,7 +104,14 @@ export async function runMessageLoop(app: PhotonApp): Promise<void> {
       );
       console.log(`[/start] space=${space.id} code=${code} participants=${participants.join(",")}`);
     } catch (err: any) {
-      console.error(`[/start] failed:`, err);
+      console.error(`[/start] failed:`, {
+        message: err?.message,
+        status: err?.status,
+        statusText: err?.statusText,
+        data: err?.data,
+        stack: err?.stack,
+        fullError: err
+      });
       await space.send(text("Failed to create room code. Try /start again."));
     }
   }
