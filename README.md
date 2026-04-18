@@ -26,6 +26,29 @@ npm run dev
 - `npm run lint` runs lint scripts across workspaces.
 - `npm run test` runs test scripts across workspaces.
 
+## Running locally
+
+Open three terminal tabs:
+
+**1. Agent** (iMessage listener + HTTP server on port 3001)
+```bash
+cd apps/agent && npm run dev
+```
+
+**2. Backend** (Flask API on port 5001)
+```bash
+cd apps/backend && python3 app.py
+```
+
+**3. Frontend** (Vite on port 5173)
+```bash
+cd apps/app && npm run dev
+```
+
+Convex is hosted at `befitting-mink-857.convex.cloud` — no local Convex server needed.
+
+---
+
 ## Knot Onboarding Setup
 
 1. Frontend env:
