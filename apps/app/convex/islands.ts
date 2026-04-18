@@ -140,9 +140,26 @@ export const getIslandDetails = query({
       .withIndex("by_island", (q) => q.eq("islandId", args.islandId))
       .collect();
 
+    const membersWithNames = await Promise.all(
+      members.map(async (m) => {
+        const id = m.phoneNumber;
+        const isEmail = id.includes("@");
+        const userRow = isEmail
+          ? await ctx.db
+              .query("users")
+              .withIndex("by_email", (q) => q.eq("email", id.toLowerCase()))
+              .first()
+          : await ctx.db
+              .query("users")
+              .withIndex("by_phone", (q) => q.eq("phoneNumber", id))
+              .first();
+        return { ...m, displayName: userRow?.displayName ?? null };
+      })
+    );
+
     return {
       island,
-      members: members.sort((a, b) => a.phoneNumber.localeCompare(b.phoneNumber)),
+      members: membersWithNames.sort((a, b) => a.phoneNumber.localeCompare(b.phoneNumber)),
       agents: agents.sort((a, b) => a.phoneNumber.localeCompare(b.phoneNumber)),
       serverNowMs: Date.now(),
     };

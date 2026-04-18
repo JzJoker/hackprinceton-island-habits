@@ -197,34 +197,35 @@ export const HELP_TEXT =
 // ── Handlers ──────────────────────────────────────────────────────────
 
 export async function handleStart(space: any, message: any): Promise<void> {
-  const existingRoom = await convex.query("groupRooms:getBySpace" as any, { spaceId: space.id });
-  if (existingRoom?.room && existingRoom?.island) {
-    const participants = collectParticipants(space, message);
-    if (participants.length) {
-      await convex.mutation("groupRooms:syncParticipants" as any, {
-        spaceId: space.id,
-        participants,
-      });
-    }
-    markOnboarded(space.id);
-    await space.send(
-      text(
-        `Island already started for this group.\n\nRoom Code: ${existingRoom.room.code}\nJoin: ${APP_BASE_URL}/dashboard?code=${existingRoom.room.code}`
-      )
-    );
-    return;
-  }
-
-  if (hasOnboarded(space.id)) {
-    await space.send(text("The start process has already been initiated."));
-    return;
-  }
-  const participants = collectParticipants(space, message);
-  if (!participants.length) {
-    await space.send(text("Couldn't detect group members. Start this in a group iMessage with phone numbers or iCloud emails."));
-    return;
-  }
   try {
+    const existingRoom = await convex.query("groupRooms:getBySpace" as any, { spaceId: space.id });
+    if (existingRoom?.room && existingRoom?.island) {
+      const participants = collectParticipants(space, message);
+      if (participants.length) {
+        await convex.mutation("groupRooms:syncParticipants" as any, {
+          spaceId: space.id,
+          participants,
+        });
+      }
+      markOnboarded(space.id);
+      await space.send(
+        text(
+          `Island already started for this group.\n\nRoom Code: ${existingRoom.room.code}\nJoin: ${APP_BASE_URL}/dashboard?code=${existingRoom.room.code}`
+        )
+      );
+      return;
+    }
+
+    if (hasOnboarded(space.id)) {
+      await space.send(text("The start process has already been initiated."));
+      return;
+    }
+    const participants = collectParticipants(space, message);
+    if (!participants.length) {
+      await space.send(text("Couldn't detect group members. Start this in a group iMessage with phone numbers or iCloud emails."));
+      return;
+    }
+
     const result: any = await convex.mutation("islands:createIsland" as any, { phoneNumbers: participants });
     const code = result.code as string;
     await convex.mutation("groupRooms:bindSpaceToIsland" as any, {

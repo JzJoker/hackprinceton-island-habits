@@ -48,9 +48,9 @@ export default defineSchema({
     motivation: v.number(),
     reminderVariants: v.array(v.string()),
     // Human-readable activity state shown across clients.
-    currentActivity: v.string(),
+    currentActivity: v.optional(v.string()),
     // Shared movement state primitives so clients can animate consistently.
-    movementState: v.object({
+    movementState: v.optional(v.object({
       mode: v.union(
         v.literal("idle"),
         v.literal("wander"),
@@ -61,7 +61,7 @@ export default defineSchema({
       seed: v.number(),
       phase: v.number(),
       updatedAt: v.number(),
-    }),
+    })),
     createdAt: v.number(),
   })
     .index("by_island", ["islandId"])
