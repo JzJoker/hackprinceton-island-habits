@@ -6,6 +6,10 @@ import type { Id } from "./_generated/dataModel";
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
 
+// Default motivation for a fresh agent — matches the UI fallback shown before
+// the agent row is created (mood ?? 70 in IslandPage/buildUiAgents).
+const DEFAULT_AGENT_MOTIVATION = 70;
+
 async function patchAgentMood(
   ctx: MutationCtx,
   islandId: Id<"islands">,
@@ -19,9 +23,21 @@ async function patchAgentMood(
       q.eq("islandId", islandId).eq("phoneNumber", phoneNumber),
     )
     .first();
-  if (!agent) return;
-  await ctx.db.patch(agent._id, {
-    motivation: clamp(agent.motivation + delta, 0, 100),
+  if (agent) {
+    await ctx.db.patch(agent._id, {
+      motivation: clamp(agent.motivation + delta, 0, 100),
+    });
+    return;
+  }
+  // Upsert: the agent row normally spawns on first goal, but dev actions may
+  // fire before that. Seed it so mood actually moves instead of silently no-op.
+  await ctx.db.insert("agents", {
+    islandId,
+    phoneNumber,
+    personalityProfile: "",
+    motivation: clamp(DEFAULT_AGENT_MOTIVATION + delta, 0, 100),
+    reminderVariants: [],
+    createdAt: Date.now(),
   });
 }
 
@@ -119,8 +135,10 @@ export const goodDay = mutation({
     });
 
     await patchAgentMood(ctx, args.islandId, args.phoneNumber, 8);
-    const motivationFactor = await getIslandMotivationFactor(ctx, args.islandId);
-    await advanceConstructingBuildingsByDays(ctx, args.islandId, motivationFactor, 1);
+    // A "perfect day" advances buildings at full motivation — don't let a low
+    // avg mood (common when agents haven't been onboarded yet, motivation=0)
+    // gate the dev fast-forward. One good day = +1/buildTimeDays per building.
+    await advanceConstructingBuildingsByDays(ctx, args.islandId, 1.0, 1);
     return { ok: true, goalCount, currencyReward, xpReward };
   },
 });
