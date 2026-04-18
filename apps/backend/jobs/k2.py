@@ -2,6 +2,7 @@ import json
 import os
 import re
 from pathlib import Path
+from typing import Optional, Tuple
 
 import requests
 
@@ -16,7 +17,7 @@ def _load(name: str) -> str:
     return (PROMPTS_DIR / name).read_text()
 
 
-def call_k2(system: str, user: str, max_tokens: int = 200) -> tuple[str, str | None]:
+def call_k2(system: str, user: str, max_tokens: int = 200) -> Tuple[str, Optional[str]]:
     r = requests.post(
         K2_API_URL,
         headers={"Authorization": f"Bearer {K2_API_KEY}", "Content-Type": "application/json"},
@@ -49,7 +50,7 @@ def call_k2(system: str, user: str, max_tokens: int = 200) -> tuple[str, str | N
     return content, reasoning
 
 
-def call_k2_json(system: str, user: str, max_tokens: int = 200) -> tuple[dict, str | None]:
+def call_k2_json(system: str, user: str, max_tokens: int = 200) -> Tuple[dict, Optional[str]]:
     raw, reasoning = call_k2(system, user, max_tokens)
     # Strip markdown code fences
     raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
@@ -69,7 +70,7 @@ def call_k2_json(system: str, user: str, max_tokens: int = 200) -> tuple[dict, s
 
 # ── Named helpers ─────────────────────────────────────────────────────────────
 
-def generate_morning_reminder(personality: dict, goal_texts: list, miss_streak: int) -> tuple[str, str | None]:
+def generate_morning_reminder(personality: dict, goal_texts: list, miss_streak: int) -> Tuple[str, Optional[str]]:
     streak_note = f"Miss streak: {miss_streak} days." if miss_streak >= 3 else ""
     user = (
         f"Agent personality: {json.dumps(personality)}\n"
@@ -94,7 +95,7 @@ def generate_weekly_summary(
     return call_k2(_load("prompt_weekly_summary.md"), user, max_tokens=250)
 
 
-def generate_low_motivation_message(personality: dict, motivation: int) -> tuple[str, str | None]:
+def generate_low_motivation_message(personality: dict, motivation: int) -> Tuple[str, Optional[str]]:
     user = (
         f"Failing players: [player]\n"
         f"Missed goals: multiple goals\n"
@@ -117,12 +118,12 @@ def generate_personality(
     return call_k2_json(_load("prompt_personality_generator.md"), user, max_tokens=200)
 
 
-def roast_goal(player_name: str, proposed_goal: str) -> tuple[str, str | None]:
+def roast_goal(player_name: str, proposed_goal: str) -> Tuple[str, Optional[str]]:
     user = f"Player name: {player_name}\nProposed goal: {proposed_goal}"
     return call_k2(_load("prompt_goal_roaster.md"), user, max_tokens=120)
 
 
-def generate_agent_gossip(agent_a_personality: dict, agent_b_personality: dict, recent_events: list) -> tuple[dict, str | None]:
+def generate_agent_gossip(agent_a_personality: dict, agent_b_personality: dict, recent_events: list) -> Tuple[dict, Optional[str]]:
     user = (
         f"Agent A personality: {json.dumps(agent_a_personality)}\n"
         f"Agent B personality: {json.dumps(agent_b_personality)}\n"
@@ -131,7 +132,7 @@ def generate_agent_gossip(agent_a_personality: dict, agent_b_personality: dict, 
     return call_k2_json(_load("prompt_agent_gossip.md"), user, max_tokens=400)
 
 
-def generate_reward_item(completed_goal: str, agent_personality: dict) -> tuple[dict, str | None]:
+def generate_reward_item(completed_goal: str, agent_personality: dict) -> Tuple[dict, Optional[str]]:
     user = (
         f"Completed goal: {completed_goal}\n"
         f"Agent personality: {json.dumps(agent_personality)}"
