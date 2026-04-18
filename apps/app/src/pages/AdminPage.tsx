@@ -58,30 +58,30 @@ function JobButton({ job }: { job: Job }) {
   }
 
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-900 p-5 flex flex-col gap-3">
+    <div className="rounded-xl border border-black bg-white p-5 flex flex-col gap-3">
       <div>
-        <p className="font-semibold text-white">{job.label}</p>
-        <p className="text-sm text-slate-400 mt-1">{job.description}</p>
+        <p className="font-semibold text-black">{job.label}</p>
+        <p className="text-sm text-neutral-600 mt-1">{job.description}</p>
       </div>
 
       <button
         onClick={trigger}
         disabled={loading}
-        className="self-start rounded-lg bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        className="self-start rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
       >
         {loading && (
-          <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-900 border-t-transparent" />
+          <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
         )}
         {loading ? 'Running…' : 'Run Now'}
       </button>
 
       {result && (
-        <div className="rounded-lg bg-green-950 border border-green-700 px-4 py-2 text-sm text-green-300 font-mono">
+        <div className="rounded-lg border border-black bg-neutral-50 px-4 py-2 text-sm text-black font-mono">
           {JSON.stringify(result)}
         </div>
       )}
       {error && (
-        <div className="rounded-lg bg-red-950 border border-red-700 px-4 py-2 text-sm text-red-300">
+        <div className="rounded-lg border border-black bg-white px-4 py-2 text-sm text-black">
           {error}
         </div>
       )}
@@ -91,14 +91,14 @@ function JobButton({ job }: { job: Job }) {
 
 export function AdminPage() {
   return (
-    <main className="min-h-screen bg-slate-950 px-6 py-12 text-slate-100">
+    <main className="min-h-screen bg-white px-6 py-12 text-black">
       <div className="mx-auto flex max-w-xl flex-col gap-8">
         <div>
-          <span className="inline-flex rounded-full border border-amber-400/40 bg-amber-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-amber-200">
+          <span className="inline-flex rounded-full border border-black bg-white px-3 py-1 text-xs font-semibold uppercase tracking-widest text-black">
             Admin
           </span>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight text-white">Job Triggers</h1>
-          <p className="mt-1 text-slate-400 text-sm">
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-black">Job Triggers</h1>
+          <p className="mt-1 text-neutral-600 text-sm">
             Manually trigger backend jobs for demo purposes.
           </p>
         </div>

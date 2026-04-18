@@ -1,7 +1,7 @@
-import { SignIn, SignedIn, SignedOut } from '@clerk/clerk-react'
+import { SignUp, SignedIn, SignedOut } from '@clerk/clerk-react'
 import { Navigate } from 'react-router-dom'
 
-export function LoginPage() {
+export function SignUpPage() {
   return (
     <main className="min-h-screen bg-white flex items-center justify-center px-6 py-10">
       <SignedIn>
@@ -14,18 +14,18 @@ export function LoginPage() {
             <div className="inline-flex rounded-full border border-black bg-white px-3 py-1 text-xs font-semibold uppercase tracking-widest text-black mb-4">
               Island of Habits
             </div>
-            <h1 className="text-3xl font-bold text-black">Sign in</h1>
+            <h1 className="text-3xl font-bold text-black">Create account</h1>
             <p className="mt-2 text-neutral-600 text-sm">
-              Use phone OTP via Clerk. Make sure Phone Number auth is enabled in Clerk dashboard.
+              Sign up with phone OTP.
             </p>
           </div>
 
           <div className="rounded-2xl border border-black bg-white p-4">
-            <SignIn
-              path="/login"
+            <SignUp
+              path="/signup"
               routing="path"
               forceRedirectUrl="/dashboard"
-              signUpUrl="/signup"
+              signInUrl="/login"
               fallbackRedirectUrl="/dashboard"
               appearance={{
                 variables: {

@@ -1,23 +1,31 @@
 import React from 'react'
+import { RedirectToSignIn, SignedIn, SignedOut } from '@clerk/clerk-react'
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { OnboardingPage } from './pages/OnboardingPage'
 import { AdminPage } from './pages/AdminPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
-import { getToken } from './hooks/useAuth'
+import { SignUpPage } from './pages/SignUpPage'
+import { SettingsPage } from './pages/SettingsPage'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  if (!getToken()) return <Navigate to="/login" replace />
-  return <>{children}</>
+  return (
+    <>
+      <SignedIn>{children}</SignedIn>
+      <SignedOut>
+        <RedirectToSignIn />
+      </SignedOut>
+    </>
+  )
 }
 
 function App() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      <Route path="/login/*" element={<LoginPage />} />
+      <Route path="/signup/*" element={<SignUpPage />} />
       <Route path="/" element={<RequireAuth><Navigate to="/dashboard" replace /></RequireAuth>} />
-      <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
       <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
+      <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>

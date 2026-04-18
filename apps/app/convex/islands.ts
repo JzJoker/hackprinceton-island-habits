@@ -135,3 +135,26 @@ export const activateIsland = mutation({
     return true;
   },
 });
+
+// Get all islands for a phone number
+export const getIslandsByPhone = query({
+  args: {
+    phoneNumber: v.string(),
+  },
+  async handler(ctx, args) {
+    const members = await ctx.db
+      .query("islandMembers")
+      .withIndex("by_phone", (q) => q.eq("phoneNumber", args.phoneNumber))
+      .collect();
+
+    const islands = [];
+    for (const member of members) {
+      const island = await ctx.db.get(member.islandId);
+      if (island) {
+        islands.push(island);
+      }
+    }
+
+    return islands;
+  },
+});

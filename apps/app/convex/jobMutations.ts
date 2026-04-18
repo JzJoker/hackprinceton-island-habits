@@ -22,16 +22,16 @@ export const logAiMessage = internalMutation({
 export const recordMiss = internalMutation({
   args: {
     goalId: v.id("goals"),
-    userId: v.id("users"),
+    phoneNumber: v.string(),
     islandId: v.id("islands"),
     agentId: v.id("agents"),
     newMotivation: v.number(),
     date: v.string(),
   },
-  handler: async (ctx, { goalId, userId, islandId, agentId, newMotivation, date }) => {
+  handler: async (ctx, { goalId, phoneNumber, islandId, agentId, newMotivation, date }) => {
     await ctx.db.insert("checkIns", {
       goalId,
-      userId,
+      phoneNumber,
       islandId,
       date,
       completed: false,
@@ -40,7 +40,7 @@ export const recordMiss = internalMutation({
     await ctx.db.insert("events", {
       islandId,
       type: "miss",
-      payload: { goalId, userId },
+      payload: { goalId, phoneNumber },
       timestamp: Date.now(),
     });
     await ctx.db.patch(agentId, { motivation: newMotivation });
@@ -48,15 +48,15 @@ export const recordMiss = internalMutation({
 });
 
 export const damageConstructingBuilding = internalMutation({
-  args: { islandId: v.id("islands"), userId: v.id("users") },
-  handler: async (ctx, { islandId, userId }) => {
+  args: { islandId: v.id("islands"), phoneNumber: v.string() },
+  handler: async (ctx, { islandId, phoneNumber }) => {
     const building = await ctx.db
       .query("buildings")
       .withIndex("by_island", (q) => q.eq("islandId", islandId))
       .filter((q) =>
         q.and(
           q.eq(q.field("state"), "constructing"),
-          q.eq(q.field("placedBy"), userId)
+          q.eq(q.field("placedBy"), phoneNumber)
         )
       )
       .first();
@@ -66,7 +66,7 @@ export const damageConstructingBuilding = internalMutation({
     await ctx.db.insert("events", {
       islandId,
       type: "damage",
-      payload: { buildingId: building._id, userId },
+      payload: { buildingId: building._id, phoneNumber },
       timestamp: Date.now(),
     });
   },

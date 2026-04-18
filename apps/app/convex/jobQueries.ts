@@ -1,39 +1,41 @@
 import { internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 
-// Returns all active island members with their user, agent, active goals, and island
+// Returns all active island members with their agent, active goals, and island
 export const getActiveMembersWithGoals = internalQuery({
   args: {},
   handler: async (ctx) => {
     const members = await ctx.db.query("islandMembers").collect();
     const results = [];
+    const islandCache = new Map<string, typeof results[0]["island"] | null>();
 
     for (const member of members) {
-      const island = await ctx.db.get(member.islandId);
+      let island = islandCache.get(member.islandId);
+      if (island === undefined) {
+        island = await ctx.db.get(member.islandId);
+        islandCache.set(member.islandId, island);
+      }
       if (!island || island.status !== "active") continue;
-
-      const user = await ctx.db.get(member.userId);
-      if (!user) continue;
 
       const agent = await ctx.db
         .query("agents")
-        .withIndex("by_island_user", (q) =>
-          q.eq("islandId", member.islandId).eq("userId", member.userId)
+        .withIndex("by_island_phone", (q) =>
+          q.eq("islandId", member.islandId).eq("phoneNumber", member.phoneNumber)
         )
         .unique();
       if (!agent) continue;
 
       const goals = await ctx.db
         .query("goals")
-        .withIndex("by_island_user", (q) =>
-          q.eq("islandId", member.islandId).eq("userId", member.userId)
+        .withIndex("by_island_phone", (q) =>
+          q.eq("islandId", member.islandId).eq("phoneNumber", member.phoneNumber)
         )
         .filter((q) => q.eq(q.field("status"), "active"))
         .collect();
 
       if (goals.length === 0) continue;
 
-      results.push({ user, agent, goals, island });
+      results.push({ phoneNumber: member.phoneNumber, agent, goals, island });
     }
 
     return results;
@@ -61,20 +63,23 @@ export const reminderSentToday = internalQuery({
   },
 });
 
-// Count missed events for a user on an island in the last N days
+// Count missed events for a phone number on an island in the last N days
 export const recentMissCount = internalQuery({
-  args: { islandId: v.id("islands"), userId: v.id("users"), days: v.number() },
-  handler: async (ctx, { islandId, userId, days }) => {
+  args: { islandId: v.id("islands"), phoneNumber: v.string(), days: v.number() },
+  handler: async (ctx, { islandId, phoneNumber, days }) => {
     const since = Date.now() - days * 86400000;
     const events = await ctx.db
       .query("events")
-      .withIndex("by_island_timestamp", (q) =>
-        q.eq("islandId", islandId).gte("timestamp", since)
+      .withIndex("by_island", (q) => q.eq("islandId", islandId))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("type"), "miss"),
+          q.gte(q.field("timestamp"), since)
+        )
       )
-      .filter((q) => q.eq(q.field("type"), "miss"))
       .collect();
     return events.filter(
-      (e) => e.payload && (e.payload as { userId: string }).userId === userId
+      (e) => e.payload && (e.payload as { phoneNumber: string }).phoneNumber === phoneNumber
     ).length;
   },
 });
@@ -89,28 +94,31 @@ export const getUncheckedGoalsForDate = internalQuery({
       .collect();
 
     const results = [];
+    const islandCache = new Map<string, Awaited<ReturnType<typeof ctx.db.get>> | undefined>();
     for (const goal of activeGoals) {
       const checkIn = await ctx.db
         .query("checkIns")
-        .withIndex("by_goal_date", (q) => q.eq("goalId", goal._id).eq("date", date))
-        .unique();
+        .withIndex("by_goal", (q) => q.eq("goalId", goal._id))
+        .filter((q) => q.eq(q.field("date"), date))
+        .first();
       if (checkIn) continue;
 
-      const island = await ctx.db.get(goal.islandId);
+      let island = islandCache.get(goal.islandId);
+      if (island === undefined) {
+        island = await ctx.db.get(goal.islandId);
+        islandCache.set(goal.islandId, island);
+      }
       if (!island || island.status !== "active") continue;
-
-      const user = await ctx.db.get(goal.userId);
-      if (!user) continue;
 
       const agent = await ctx.db
         .query("agents")
-        .withIndex("by_island_user", (q) =>
-          q.eq("islandId", goal.islandId).eq("userId", goal.userId)
+        .withIndex("by_island_phone", (q) =>
+          q.eq("islandId", goal.islandId).eq("phoneNumber", goal.phoneNumber)
         )
         .unique();
       if (!agent) continue;
 
-      results.push({ goal, island, user, agent });
+      results.push({ goal, island, phoneNumber: goal.phoneNumber, agent });
     }
     return results;
   },
@@ -121,7 +129,7 @@ export const missAlreadyRecorded = internalQuery({
   args: { goalId: v.id("goals"), date: v.string() },
   handler: async (ctx, { goalId, date }) => {
     const startOfDay = new Date(date + "T00:00:00Z").getTime();
-    const event = await ctx.db
+    const events = await ctx.db
       .query("events")
       .filter((q) =>
         q.and(
@@ -130,9 +138,10 @@ export const missAlreadyRecorded = internalQuery({
           q.lt(q.field("timestamp"), startOfDay + 86400000)
         )
       )
-      .filter((q) => q.eq((q.field("payload") as unknown as { goalId: string }), goalId))
-      .first();
-    return event !== null;
+      .collect();
+    return events.some(
+      (e) => e.payload && (e.payload as { goalId: string }).goalId === goalId
+    );
   },
 });
 
@@ -157,7 +166,7 @@ export const getConstructingBuildings = internalQuery({
   },
 });
 
-// Returns all active islands with their members (user phone numbers) and last 7 days of events
+// Returns all active islands with their member phone numbers and last 7 days of events
 export const getIslandsForWeeklySummary = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -175,17 +184,12 @@ export const getIslandsForWeeklySummary = internalQuery({
         .withIndex("by_island", (q) => q.eq("islandId", island._id))
         .collect();
 
-      const phones: string[] = [];
-      for (const m of members) {
-        const user = await ctx.db.get(m.userId);
-        if (user) phones.push(user.phoneNumber);
-      }
+      const phones = members.map((m) => m.phoneNumber);
 
       const events = await ctx.db
         .query("events")
-        .withIndex("by_island_timestamp", (q) =>
-          q.eq("islandId", island._id).gte("timestamp", since)
-        )
+        .withIndex("by_island", (q) => q.eq("islandId", island._id))
+        .filter((q) => q.gte(q.field("timestamp"), since))
         .collect();
 
       results.push({ island, phones, events });
@@ -203,11 +207,6 @@ export const getIslandPhoneNumbers = internalQuery({
       .query("islandMembers")
       .withIndex("by_island", (q) => q.eq("islandId", islandId))
       .collect();
-    const phones: string[] = [];
-    for (const m of members) {
-      const user = await ctx.db.get(m.userId);
-      if (user) phones.push(user.phoneNumber);
-    }
-    return phones;
+    return members.map((m) => m.phoneNumber);
   },
 });

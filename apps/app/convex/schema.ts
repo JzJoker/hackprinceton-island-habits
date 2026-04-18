@@ -34,6 +34,7 @@ export default defineSchema({
     role: v.union(v.literal("creator"), v.literal("member")),
   })
     .index("by_island", ["islandId"])
+    .index("by_phone", ["phoneNumber"])
     .index("by_island_phone", ["islandId", "phoneNumber"]),
 
   agents: defineTable({
