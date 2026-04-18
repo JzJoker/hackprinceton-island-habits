@@ -514,8 +514,8 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
 
       {/* ── Gossip speech bubble ── */}
       {gossipText && (
-        <Html position={[0, 1.65, 0]} center distanceFactor={6} zIndexRange={[20, 10]}>
-          <div className="pointer-events-none relative bg-white rounded-2xl px-3 py-1.5 text-[11px] font-bold shadow-lg max-w-[150px] text-center leading-snug border border-neutral-200 animate-in zoom-in-75 duration-300 select-none">
+        <Html position={[0, 1.65, 0]} center distanceFactor={6} zIndexRange={[9999, 9990]} prepend>
+          <div className="pointer-events-none relative bg-white rounded-2xl px-3 py-1.5 text-[11px] font-bold shadow-lg max-w-[150px] text-center leading-snug border border-neutral-200 animate-in zoom-in-75 duration-300 select-none" style={{ zIndex: 9999 }}>
             {gossipText}
             <div className="absolute bottom-[-5px] left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-white border-r border-b border-neutral-200 rotate-45" />
           </div>
