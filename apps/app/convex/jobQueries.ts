@@ -21,7 +21,7 @@ export const getActiveMembersWithGoals = query({
         island = await ctx.db.get(member.islandId);
         islandCache.set(member.islandId, island);
       }
-      if (!island || island.status !== "active") continue;
+      if (!island) continue;
 
       const agent = await ctx.db
         .query("agents")
@@ -120,7 +120,7 @@ export const getUncheckedGoalsForDate = query({
         island = await ctx.db.get(goal.islandId);
         islandCache.set(goal.islandId, island);
       }
-      if (!island || island.status !== "active") continue;
+      if (!island) continue;
 
       const agent = await ctx.db
         .query("agents")

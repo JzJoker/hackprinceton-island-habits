@@ -8,6 +8,15 @@ from jobs.convex_client import get_client
 from jobs.k2 import generate_morning_reminder
 from jobs.photon import send_message
 
+DEFAULT_PERSONALITY = {
+    "personality_type": "Cheerful Motivator",
+    "tone": "upbeat and warm, speaks like an enthusiastic friend who genuinely believes in you",
+    "quirks": [
+        "peppers messages with small observations about island life",
+        "always ends with a short encouraging nudge"
+    ],
+}
+
 
 @jobs_bp.post("/morning-reminder")
 def morning_reminder():
@@ -38,13 +47,14 @@ def morning_reminder():
         })
 
         goal_texts = [g["text"] for g in goals]
-        variants = agent.get("reminderVariants", [])
+        variants = agent.get("reminderVariants") or []
+        personality = agent.get("personalityProfile") or DEFAULT_PERSONALITY
 
         if variants and miss_streak < 3:
             message = random.choice(variants)
             reasoning = None
         else:
-            message, reasoning = generate_morning_reminder(agent["personalityProfile"], goal_texts, miss_streak)
+            message, reasoning = generate_morning_reminder(personality, goal_texts, miss_streak)
 
         send_message(phone_number, message)
 
