@@ -527,10 +527,10 @@ export const Agent3D = ({
         </div>
       </Html>
 
-      {/* ── Gossip speech bubble ── */}
+      {/* ── Gossip speech bubble — portaled to body to stay above all UI ── */}
       {gossipText && (
-        <Html position={[0, 1.65, 0]} center distanceFactor={6} zIndexRange={[9999, 9990]} prepend>
-          <div className="pointer-events-none relative bg-white rounded-2xl px-3 py-1.5 text-[11px] font-bold shadow-lg max-w-[150px] text-center leading-snug border border-neutral-200 animate-in zoom-in-75 duration-300 select-none" style={{ zIndex: 9999 }}>
+        <Html position={[0, 1.65, 0]} center distanceFactor={6} zIndexRange={[9999, 9999]} portal={{ current: document.body }}>
+          <div className="pointer-events-none relative bg-white rounded-2xl px-3 py-1.5 text-[11px] font-bold shadow-lg max-w-[150px] text-center leading-snug border border-neutral-200 select-none">
             {gossipText}
             <div className="absolute bottom-[-5px] left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-white border-r border-b border-neutral-200 rotate-45" />
           </div>
