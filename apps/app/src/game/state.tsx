@@ -466,10 +466,16 @@ export const GameProvider = ({
     if (patch.agents !== undefined) {
       setAgents((prev) => {
         const prevById = new Map(prev.map((agent) => [agent.id, agent]));
-        return patch.agents!.map((incoming) => ({
-          ...(prevById.get(incoming.id) ?? incoming),
-          ...incoming,
-        }));
+        return patch.agents!.map((incoming) => {
+          const existing = prevById.get(incoming.id);
+          const { home: _home, ...rest } = incoming;
+          return {
+            ...(existing ?? incoming),
+            ...rest,
+            // Only set home on first appearance; never overwrite so agents don't teleport
+            home: existing?.home ?? incoming.home,
+          };
+        });
       });
     }
     if (patch.buildings !== undefined) {
