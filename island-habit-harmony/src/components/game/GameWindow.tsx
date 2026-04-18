@@ -13,11 +13,60 @@ import { ToastLayer } from "@/game/overlays/ToastLayer";
 import { MobilePlacingHUD } from "./MobilePlacingHUD";
 import { useGame } from "@/game/state";
 
+const VisitBanner = () => {
+  const { viewingEra, visitIsland, islandHistory } = useGame();
+  if (viewingEra === null) return null;
+  const snap = islandHistory[viewingEra];
+  if (!snap) return null;
+  return (
+    <div className="absolute top-0 left-0 right-0 z-[300] flex justify-center pointer-events-none"
+         style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 140px)" }}>
+      <div className="hud-panel-dark px-4 py-2.5 flex items-center gap-3 pointer-events-auto shadow-float animate-in slide-in-from-top duration-300">
+        <span className="text-2xl">{snap.emoji}</span>
+        <div className="leading-none">
+          <p className="text-[9px] font-bold uppercase tracking-widest opacity-60">Visiting past island</p>
+          <p className="display-font text-sm font-bold">{snap.name}</p>
+        </div>
+        <button
+          onClick={() => visitIsland(null)}
+          className="ml-2 btn-game-coral px-3 py-1.5 text-[11px] font-black rounded-xl active:scale-95 transition"
+        >
+          ← Return Home
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const TransitionOverlay = () => {
   const { isTransitioning } = useGame();
   if (!isTransitioning) return null;
   return (
-    <div className="absolute inset-0 z-[150] bg-black pointer-events-none animate-in fade-in duration-500" />
+    <div className="absolute inset-0 z-[150] pointer-events-none flex items-center justify-center animate-in fade-in duration-700"
+         style={{ background: "radial-gradient(circle at center, #FFFBE8 0%, #B8D8F8 60%, #4A90D0 100%)" }}>
+      <div className="text-center animate-in zoom-in-75 duration-500">
+        <div className="text-5xl mb-3 animate-bounce">✈️</div>
+        <p className="display-font text-2xl font-black text-white/90 drop-shadow-lg">Setting sail…</p>
+      </div>
+    </div>
+  );
+};
+
+const VisitTransitionOverlay = () => {
+  const { isVisiting, viewingEra, islandHistory } = useGame();
+  if (!isVisiting) return null;
+  // figure out where we're going — if viewingEra is still set we're returning home, otherwise arriving
+  const snap = viewingEra !== null ? islandHistory[viewingEra] : null;
+  return (
+    <div className="absolute inset-0 z-[150] pointer-events-none flex items-center justify-center animate-in fade-in duration-400"
+         style={{ background: "radial-gradient(circle at center, #FFF8E0 0%, #D0E8F8 55%, #5A8FC0 100%)" }}>
+      <div className="text-center animate-in zoom-in-75 duration-300">
+        <div className="text-5xl mb-3" style={{ animation: "spin 0.9s linear" }}>🕰️</div>
+        <p className="display-font text-xl font-black text-white/90 drop-shadow-lg">
+          {snap ? `Traveling to ${snap.name}…` : "Returning home…"}
+        </p>
+      </div>
+    </div>
   );
 };
 
@@ -67,6 +116,12 @@ export const GameWindow = () => (
 
       {/* Transition overlay — shown during island graduation */}
       <TransitionOverlay />
+
+      {/* Visit transition — shown while time-traveling to a past island */}
+      <VisitTransitionOverlay />
+
+      {/* Visit banner — shown when viewing a past island */}
+      <VisitBanner />
 
       {/* Layer 3 — Toast notifications (topmost) */}
       <div className="absolute inset-0 z-[200] pointer-events-none">

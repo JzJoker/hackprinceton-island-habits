@@ -1,4 +1,4 @@
-import { Home, Hammer, BarChart3, Sparkles, Camera } from "lucide-react";
+import { Home, Hammer, Sparkles, Camera, TrendingUp } from "lucide-react";
 import { useGame, ScreenId } from "@/game/state";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -11,8 +11,8 @@ export const ActionDock = () => {
     { id: "Build",  icon: Hammer, route: "build" },
   ];
   const rightItems: { id: string; icon: typeof Home; route: ScreenId }[] = [
-    { id: "History",  icon: BarChart3,  route: "history" },
-    { id: "Journey",  icon: Sparkles,   route: "expand" },
+    { id: "Report",  icon: TrendingUp, route: "recap" as ScreenId },
+    { id: "Journey", icon: Sparkles,   route: "expand" as ScreenId },
   ];
 
   /* ── Mobile layout ──────────────────────────────────── */

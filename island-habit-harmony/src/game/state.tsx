@@ -11,10 +11,10 @@ export type BuildingType = "house" | "garden" | "library" | "gym" | "lighthouse"
 export type DistrictId = "main" | "forest" | "beach" | "hill";
 
 export const ISLAND_TIERS = [
-  { era: 0, name: "Pine Hollow",    emoji: "🌿", environment: "spring",   unlockLevel: 0,  radius: 7.0,  fogColor: "#C8DFF0", skyTurbidity: 1.8, skyRayleigh: 0.8,  waterColor: "#3B8EBF", sunPos: [10,5,4] as [number,number,number], description: "Your first island — fresh grass and gentle breeze." },
-  { era: 1, name: "Amber Ridge",    emoji: "🍂", environment: "autumn",   unlockLevel: 10, radius: 8.5,  fogColor: "#D4A882", skyTurbidity: 3.5, skyRayleigh: 0.4,  waterColor: "#4A7A9B", sunPos: [6,2,8]  as [number,number,number], description: "Golden harvest warmth. A bigger canvas awaits." },
-  { era: 2, name: "Frostpeak Isle", emoji: "❄️", environment: "winter",   unlockLevel: 20, radius: 10.0, fogColor: "#C0D4E8", skyTurbidity: 0.8, skyRayleigh: 1.4,  waterColor: "#2A5878", sunPos: [4,3,10] as [number,number,number], description: "Snow-dusted peaks, crisp silence." },
-  { era: 3, name: "Coral Cove",     emoji: "🌺", environment: "tropical", unlockLevel: 30, radius: 12.0, fogColor: "#A8D8E8", skyTurbidity: 1.2, skyRayleigh: 1.6,  waterColor: "#1A6B8B", sunPos: [8,8,2]  as [number,number,number], description: "Lush tropics, perpetual summer." },
+  { era: 0, name: "Pine Hollow",    emoji: "🌿", environment: "spring",   unlockLevel: 0,  radius: 7.0,  fogColor: "#C8DFF0", skyTurbidity: 1.8, skyRayleigh: 0.8,  waterColor: "#3B8EBF", sunPos: [10,5,4] as [number,number,number], description: "Your first island — fresh grass and gentle breeze.", grassColor: "#7AB85A", cliffColor: "#7A6848", sandColor: "#D8C8A0" },
+  { era: 1, name: "Amber Ridge",    emoji: "🍂", environment: "autumn",   unlockLevel: 10, radius: 8.5,  fogColor: "#D4A882", skyTurbidity: 3.5, skyRayleigh: 0.4,  waterColor: "#4A7A9B", sunPos: [6,2,8]  as [number,number,number], description: "Golden harvest warmth. A bigger canvas awaits.", grassColor: "#C07830", cliffColor: "#8B5E3C", sandColor: "#E0B878" },
+  { era: 2, name: "Frostpeak Isle", emoji: "❄️", environment: "winter",   unlockLevel: 13, radius: 10.0, fogColor: "#C0D4E8", skyTurbidity: 0.8, skyRayleigh: 1.4,  waterColor: "#2A5878", sunPos: [4,3,10] as [number,number,number], description: "Snow-dusted peaks, crisp silence.", grassColor: "#B8CCE0", cliffColor: "#7888A0", sandColor: "#D8E4F0" },
+  { era: 3, name: "Coral Cove",     emoji: "🌺", environment: "tropical", unlockLevel: 15, radius: 12.0, fogColor: "#A8D8E8", skyTurbidity: 1.2, skyRayleigh: 1.6,  waterColor: "#1A6B8B", sunPos: [8,8,2]  as [number,number,number], description: "Lush tropics, perpetual summer.", grassColor: "#3DAA60", cliffColor: "#6A7A40", sandColor: "#F0D898" },
 ] as const;
 export type IslandEra = typeof ISLAND_TIERS[number];
 
@@ -149,6 +149,12 @@ interface GameState {
   isTransitioning: boolean;
   graduateIsland: () => void;
   canGraduate: boolean;
+
+  // Visiting past islands
+  viewingEra: number | null;
+  setViewingEra: (era: number | null) => void;
+  isVisiting: boolean;
+  visitIsland: (era: number | null) => void;
 
   // Free-placement build flow
   placingType: BuildingType | null;
@@ -299,10 +305,27 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const [chats, setChats] = useState<Record<AgentId, ChatMsg[]>>(seedChats);
   const [toast, setToast] = useState<string | null>(null);
 
-  // Island era state
-  const [islandEra, setIslandEra] = useState(0);
-  const [islandHistory, setIslandHistory] = useState<IslandSnapshot[]>([]);
+  // Island era state — era 1 is current, era 0 is in history
+  const [islandEra, setIslandEra] = useState(1);
+  const [islandHistory, setIslandHistory] = useState<IslandSnapshot[]>([
+    {
+      era: 0,
+      name: "Pine Hollow",
+      emoji: "🌿",
+      buildings: [
+        { id: "seed_b1", type: "house",    pos: [ 1.2,  0.8], district: "main", score: 8  },
+        { id: "seed_b2", type: "garden",   pos: [-1.5,  1.0], district: "main", score: 12 },
+        { id: "seed_b3", type: "fountain", pos: [ 0.0, -1.8], district: "main", score: 15 },
+        { id: "seed_b4", type: "bonfire",  pos: [ 2.5, -1.2], district: "main", score: 3  },
+      ],
+      level: 10,
+      coinsEarned: 1820,
+      graduatedAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+  ]);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isVisiting, setIsVisiting] = useState(false);
+  const [viewingEra, setViewingEra] = useState<number | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -350,6 +373,15 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
   const cancelPlacing = useCallback(() => setPlacingType(null), []);
 
+  // Animated island visit (with flight transition)
+  const visitIsland = useCallback((era: number | null) => {
+    setIsVisiting(true);
+    setTimeout(() => {
+      setViewingEra(era);
+      setIsVisiting(false);
+    }, 900);
+  }, []);
+
   const completeGoal = useCallback((id: string) => {
     setGoals((gs) => gs.map((g) => g.id === id ? { ...g, done: true } : g));
     const g = goals.find((x) => x.id === id);
@@ -396,6 +428,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       coins, streak, level, xp,
       agents, buildings, scenery, goals,
       islandEra, islandHistory, isTransitioning, graduateIsland, canGraduate,
+      viewingEra, setViewingEra, isVisiting, visitIsland,
       placingType, setPlacingType, placeBuildingAt, cancelPlacing,
       completeGoal, addGoal, editGoal, deleteGoal, pendingCheckIn, setPendingCheckIn,
       chats, sendChat,

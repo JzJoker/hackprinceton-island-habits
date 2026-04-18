@@ -61,7 +61,7 @@ const BumpyTerrain = ({
 };
 
 /* ── Single district landmass with layered geology ──── */
-const DistrictLand = ({ d }: { d: District }) => {
+const DistrictLand = ({ d, overrideGrass, overrideCliff, overrideSand }: { d: District; overrideGrass?: string; overrideCliff?: string; overrideSand?: string }) => {
   // Bigger, more dramatic hills
   const hills = useMemo(() => {
     const arr: { x: number; z: number; r: number; h: number; color: string }[] = [];
@@ -139,10 +139,12 @@ const DistrictLand = ({ d }: { d: District }) => {
     }
   });
 
-  const sandColor = d.id === "beach" ? "#F4DCAC" : "#D8C8A0";
-  const cliffColor = d.id === "hill" ? "#6A6058" : "#7A6848";
-  const cliffDark = d.id === "hill" ? "#4A4238" : "#5A4830";
-  const grassColor = d.color;
+  const sandColor = overrideSand ?? (d.id === "beach" ? "#F4DCAC" : "#D8C8A0");
+  const cliffColor = overrideCliff ?? (d.id === "hill" ? "#6A6058" : "#7A6848");
+  const cliffDark = overrideCliff
+    ? overrideCliff  // approximate
+    : (d.id === "hill" ? "#4A4238" : "#5A4830");
+  const grassColor = overrideGrass ?? d.color;
 
   return (
     <group position={[d.center[0], 0, d.center[1]]}>
@@ -345,21 +347,22 @@ const LockedGhost = ({ d, onClick }: { d: District; onClick: () => void }) => (
 
 /* ── Districts renderer — single island era ──────────── */
 export const DistrictsRenderer = () => {
-  const { islandEra } = useGame();
-  const tier = ISLAND_TIERS[islandEra];
+  const { islandEra, viewingEra } = useGame();
+  const displayEra = viewingEra ?? islandEra;
+  const tier = ISLAND_TIERS[displayEra];
 
   // Build a District-compatible object from the current island tier
   const mainDistrict: District = {
     ...DISTRICTS[0],
     name: tier.name,
     radius: tier.radius,
-    color: DISTRICTS[0].color,
+    color: tier.grassColor,
     unlocked: true,
   };
 
   return (
     <>
-      <DistrictLand d={mainDistrict} />
+      <DistrictLand d={mainDistrict} overrideGrass={tier.grassColor} overrideCliff={tier.cliffColor} overrideSand={tier.sandColor} />
     </>
   );
 };

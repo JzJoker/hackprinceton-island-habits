@@ -167,8 +167,12 @@ const WAYPOINTS: [number, number][] = [
 
 /* ── Main scene ──────────────────────────────────────── */
 const Scene = () => {
-  const { agents, buildings, scenery, selectedAgent, setSelectedAgent, setScreen, placingType, islandEra } = useGame();
-  const tier = ISLAND_TIERS[islandEra];
+  const { agents, buildings, scenery, selectedAgent, setSelectedAgent, setScreen, placingType, islandEra, viewingEra, islandHistory } = useGame();
+  const displayEra = viewingEra ?? islandEra;
+  const tier = ISLAND_TIERS[displayEra];
+  const displayBuildings = viewingEra !== null
+    ? (islandHistory[viewingEra]?.buildings ?? [])
+    : buildings;
 
   return (
     <>
@@ -236,18 +240,19 @@ const Scene = () => {
       <SceneryRenderer scenery={scenery} />
       <Particles />
 
-      {buildings.map((b) => (
+      {displayBuildings.map((b) => (
         <Building3D key={b.id} building={b} />
       ))}
 
-      {agents.map((a) => (
+      {/* Agents only appear on the current island, not during history visits */}
+      {viewingEra === null && agents.map((a) => (
         <Agent3D
           key={a.id}
           agent={a}
           waypoints={WAYPOINTS}
           buildings={buildings}
           scenery={scenery}
-          islandRadius={tier.radius}
+          islandRadius={ISLAND_TIERS[islandEra].radius}
           isSelected={selectedAgent === a.id}
           onClick={() => {
             if (placingType) return;
