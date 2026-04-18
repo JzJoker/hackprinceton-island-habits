@@ -13,7 +13,7 @@ export const getBuildings = query({
 export const tickBuildProgress = mutation({
   args: { islandId: v.id("islands"), motivationFactor: v.number() },
   handler: async (ctx, { islandId, motivationFactor }) => {
-    const INTERVAL_SECS = 30;
+    const INTERVAL_SECS = 5;
     const GAME_DAY_SECS = 120;
     const buildings = await ctx.db
       .query("buildings")

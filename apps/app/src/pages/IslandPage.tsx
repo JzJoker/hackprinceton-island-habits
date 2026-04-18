@@ -1,4 +1,4 @@
-import { useMemo, Suspense, useEffect } from 'react'
+import { useMemo, Suspense, useEffect, useRef } from 'react'
 import { useUser } from '@clerk/clerk-react'
 import { useQuery, useMutation } from 'convex/react'
 import { useSearchParams } from 'react-router-dom'
@@ -92,14 +92,20 @@ function mapIslandGoalsToUiGoals(
 function BuildProgressSync({ islandId }: { islandId: Id<'islands'> }) {
   const { buildings, groupMotivation } = useGame()
   const tickProgress = useMutation(api.buildings.tickBuildProgress)
+  const buildingsRef = useRef(buildings)
+  const motivationRef = useRef(groupMotivation)
+  buildingsRef.current = buildings
+  motivationRef.current = groupMotivation
 
   useEffect(() => {
-    if (!buildings.some((b) => b.buildProgress < 1)) return
-    const id = setInterval(() => {
-      tickProgress({ islandId, motivationFactor: groupMotivation }).catch(console.error)
-    }, 30_000)
+    const tick = () => {
+      if (!buildingsRef.current.some((b) => b.buildProgress < 1)) return
+      tickProgress({ islandId, motivationFactor: motivationRef.current }).catch(console.error)
+    }
+    tick() // fire immediately on mount
+    const id = setInterval(tick, 5_000)
     return () => clearInterval(id)
-  }, [buildings, groupMotivation, islandId, tickProgress])
+  }, [islandId, tickProgress]) // stable deps — one interval per island
 
   return null
 }
