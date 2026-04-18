@@ -20,9 +20,7 @@
       "dependsOn": [
         "^test"
       ],
-      "outputs": [
-        "coverage/**"
-      ]
+      "outputs": []
     }
   }
 }

@@ -13,10 +13,9 @@ npm run dev
 
 ```
 .
-├── apps
-│   └── web
-└── packages
-    └── shared
+└── apps
+    ├── app
+    └── agent
 ```
 
 ## Useful scripts
