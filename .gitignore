@@ -8,3 +8,4 @@ CLAUDE.md
 .env.*
 !.env.example
 __pycache__/
+.dedalus_machines.json
