@@ -1,15 +1,11 @@
-import os
 from datetime import datetime, timezone
 
-import requests
 from flask import jsonify
 
 from jobs import jobs_bp
 from jobs.convex_client import get_client
+from jobs.k2 import generate_low_motivation_message
 from jobs.photon import send_group_message
-
-K2_API_URL = os.environ.get("K2_API_URL", "")
-K2_API_KEY = os.environ.get("K2_API_KEY", "")
 
 MOTIVATION_PENALTY = {"easy": 5, "normal": 10, "hard": 15}
 
@@ -57,7 +53,7 @@ def end_of_day_miss():
 
         # Broadcast low-motivation message if threshold just crossed
         if new_motivation < 30 and prev_motivation >= 30:
-            message = _generate_low_motivation_message(agent["personalityProfile"], new_motivation)
+            message = generate_low_motivation_message(agent["personalityProfile"], new_motivation)
             phones = db.query("jobQueries:getIslandPhoneNumbers", {"islandId": island["_id"]})
             send_group_message(phones, message)
             db.mutation("jobMutations:logAiMessage", {
@@ -71,22 +67,5 @@ def end_of_day_miss():
 
     return jsonify({"ok": True, "processed": processed, "skipped": skipped})
 
-
-def _generate_low_motivation_message(personality: dict, motivation: int) -> str:
-    prompt = (
-        f"You are an AI agent with this personality: {personality}.\n"
-        f"Your motivation has dropped to {motivation}/100 because your player has been missing their goals.\n"
-        "Write a short message (1-2 sentences, in character) to send to the group chat to let them know you're struggling.\n"
-        "An anxious agent sounds worried, a stoic agent is brief, a humorous agent jokes about themselves.\n"
-        "Do not use hashtags or emojis."
-    )
-    resp = requests.post(
-        K2_API_URL,
-        headers={"Authorization": f"Bearer {K2_API_KEY}", "Content-Type": "application/json"},
-        json={"model": "k2-think-v2", "messages": [{"role": "user", "content": prompt}], "max_tokens": 80},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"].strip()
 
 

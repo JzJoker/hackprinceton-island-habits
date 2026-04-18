@@ -6,17 +6,12 @@ import type { Id } from '../../convex/_generated/dataModel'
 import { api } from '../../convex/_generated/api'
 import { usePhoneNumber } from '../hooks/usePhoneNumber'
 
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
 export function DashboardPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const islandIdParam = searchParams.get('islandId')
   const phone = usePhoneNumber()
   const islandId = islandIdParam as Id<'islands'> | null
-  const date = todayIsoDate()
 
   const [joinCode, setJoinCode] = useState('')
   const [joinLoading, setJoinLoading] = useState(false)
@@ -47,18 +42,8 @@ export function DashboardPage() {
     api.islands.getIslandDetails,
     islandId ? { islandId } : 'skip',
   )
-  const goals = useQuery(
-    api.goals.getGoals,
-    islandId && phone ? { islandId, phoneNumber: phone } : 'skip',
-  )
-  const todayCheckIns = useQuery(
-    api.goals.getTodayCheckIns,
-    islandId && phone ? { islandId, phoneNumber: phone, date } : 'skip',
-  )
-  const checkIn = useMutation(api.goals.checkIn)
   const joinIslandMut = useMutation(api.islands.joinIsland)
 
-  const checkedInGoalIds = new Set((todayCheckIns ?? []).map((c) => c.goalId))
   const motivation =
     islandDetails?.agents && islandDetails.agents.length
       ? Math.round(
@@ -66,18 +51,6 @@ export function DashboardPage() {
             islandDetails.agents.length,
         )
       : 0
-
-  const handleCheckIn = async (goalId: Id<'goals'>) => {
-    if (!islandId || !phone || checkedInGoalIds.has(goalId)) {
-      return
-    }
-    await checkIn({
-      goalId,
-      islandId,
-      phoneNumber: phone,
-      date,
-    })
-  }
 
   const handleJoinIsland = async (e: React.FormEvent) => {
     e.preventDefault()
