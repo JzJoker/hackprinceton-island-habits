@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useMemo } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import a1 from "@/assets/agent-1.png";
 import a2 from "@/assets/agent-2.png";
@@ -214,8 +214,11 @@ interface GameState {
   toast: string | null;
   showToast: (msg: string) => void;
   islandName: string;
+  islandId: string | null;
+  phoneNumber: string | null;
   trackAgent: boolean;
   setTrackAgent: (v: boolean) => void;
+  syncFromConvex: (patch: Partial<Pick<GameState, "level" | "xp" | "coins" | "agents" | "buildings">>) => void;
 
   // Dev controls (desktop only)
   devNextDay: () => void;       // ☀️✓ good day — all goals done, mood up
@@ -231,12 +234,16 @@ interface GameState {
 
 export interface GameBootstrapData {
   islandName?: string;
+  islandId?: string;
+  phoneNumber?: string;
   coins?: number;
   streak?: number;
   level?: number;
   xp?: number;
   agents?: Agent[];
   goals?: Goal[];
+  buildings?: Building[];
+  onBuildingPlaced?: (type: string, x: number, y: number, cost: number, days: number) => void;
 }
 
 const Ctx = createContext<GameState | null>(null);
@@ -369,6 +376,7 @@ export const GameProvider = ({
   const seededIslandName = initialData?.islandName ?? "Pine Hollow";
   const seededAgents = initialData?.agents?.length ? initialData.agents : initialAgents;
   const seededGoals = initialData?.goals?.length ? initialData.goals : initialGoals;
+  const onBuildingPlacedRef = useRef(initialData?.onBuildingPlaced);
 
   const [screen, setScreen] = useState<ScreenId>(null);
   const [selectedAgent, setSelectedAgent] = useState<AgentId>(seededAgents[0]?.id ?? "sofia");
@@ -376,8 +384,10 @@ export const GameProvider = ({
   const [streak, setStreak] = useState(initialData?.streak ?? 0);
   const [level, setLevel] = useState(initialData?.level ?? 1);
   const [xp, setXp] = useState(initialData?.xp ?? 0);
+  const [islandId] = useState<string | null>(initialData?.islandId ?? null);
+  const [phoneNumber] = useState<string | null>(initialData?.phoneNumber ?? null);
   const [agents, setAgents] = useState<Agent[]>(seededAgents);
-  const [buildings, setBuildings] = useState<Building[]>(initialBuildings);
+  const [buildings, setBuildings] = useState<Building[]>(initialData?.buildings ?? initialBuildings);
   const [scenery] = useState<Scenery[]>(initialScenery);
   const [goals, setGoals] = useState<Goal[]>(seededGoals);
   const [placingType, setPlacingType] = useState<BuildingType | null>(null);
@@ -386,24 +396,9 @@ export const GameProvider = ({
   const [toast, setToast] = useState<string | null>(null);
   const [islandName] = useState(seededIslandName);
 
-  // Island era state — era 1 is current, era 0 is in history
-  const [islandEra, setIslandEra] = useState(1);
-  const [islandHistory, setIslandHistory] = useState<IslandSnapshot[]>([
-    {
-      era: 0,
-      name: seededIslandName,
-      emoji: "🌿",
-      buildings: [
-        { id: "seed_b1", type: "house",    pos: [ 1.2,  0.8], district: "main", score: 8,  buildProgress: 1, buildTime: 3 },
-        { id: "seed_b2", type: "garden",   pos: [-1.5,  1.0], district: "main", score: 12, buildProgress: 1, buildTime: 1 },
-        { id: "seed_b3", type: "fountain", pos: [ 0.0, -1.8], district: "main", score: 15, buildProgress: 1, buildTime: 3 },
-        { id: "seed_b4", type: "bonfire",  pos: [ 2.5, -1.2], district: "main", score: 3,  buildProgress: 1, buildTime: 1 },
-      ],
-      level: 10,
-      coinsEarned: 1820,
-      graduatedAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-  ]);
+  // Island era state — start on era 0 (Pine Hollow) with no history
+  const [islandEra, setIslandEra] = useState(0);
+  const [islandHistory, setIslandHistory] = useState<IslandSnapshot[]>([]);
   const [trackAgent, setTrackAgent] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isVisiting, setIsVisiting] = useState(false);
@@ -412,6 +407,17 @@ export const GameProvider = ({
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2400);
+  }, []);
+
+  const syncFromConvex = useCallback((patch: Partial<Pick<GameState, "level" | "xp" | "coins" | "agents" | "buildings">>) => {
+    if (patch.level !== undefined) setLevel(patch.level);
+    if (patch.xp !== undefined) setXp(patch.xp);
+    if (patch.coins !== undefined) setCoins(patch.coins);
+    if (patch.agents !== undefined) setAgents(prev => prev.map(agent => {
+      const fresh = patch.agents!.find(x => x.id === agent.id);
+      return fresh ? { ...agent, mood: fresh.mood } : agent;
+    }));
+    if (patch.buildings !== undefined) setBuildings(patch.buildings);
   }, []);
 
   const graduateIsland = useCallback(() => {
@@ -448,6 +454,7 @@ export const GameProvider = ({
     if (coins < opt.cost) { showToast("Not enough coins"); return false; }
     setCoins((c) => c - opt.cost);
     setBuildings((bs) => [...bs, { id: `b${Date.now()}`, type: placingType, pos, district: "main", score: result.score, buildProgress: 0, buildTime: opt.buildDays }]);
+    onBuildingPlacedRef.current?.(placingType, pos[0], pos[1], opt.cost, opt.buildDays);
     setPlacingType(null);
     showToast(`+${result.score} harmony · ${opt.name} built!`);
     return true;
@@ -498,7 +505,7 @@ export const GameProvider = ({
     });
   }, [groupMotivation, showToast]);
 
-  // ── Shared helper: advance one day and tick building progress ──────────────
+  // ── Day advancement helper ─────────────────────────────────────────────────
   const advanceDay = useCallback((motOverride?: number) => {
     const mot = motOverride ?? groupMotivation;
     setBuildings(bs => {
@@ -591,4 +598,33 @@ export const GameProvider = ({
 
   return (
     <Ctx.Provider value={{
+      screen, setScreen,
+      selectedAgent, setSelectedAgent,
+      coins, streak, level, xp,
+      agents, buildings, scenery, goals,
+      islandEra, islandHistory, isTransitioning, graduateIsland, canGraduate,
+      viewingEra, setViewingEra, isVisiting, visitIsland,
+      placingType, setPlacingType, placeBuildingAt, cancelPlacing,
+      completeGoal, addGoal, editGoal, deleteGoal, pendingCheckIn, setPendingCheckIn,
+      chats, sendChat,
+      toast, showToast,
+      islandName,
+      islandId,
+      phoneNumber,
+      trackAgent, setTrackAgent,
+      syncFromConvex,
+      devNextDay, devNextDayBad, devLevelUp,
+      tickBuildings,
+      groupMotivation,
+    }}>
+      {children}
+    </Ctx.Provider>
+  );
+};
+
+export const useGame = () => {
+  const v = useContext(Ctx);
+  if (!v) throw new Error("useGame must be inside GameProvider");
+  return v;
+};
      

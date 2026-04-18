@@ -1,12 +1,12 @@
-import { useMemo, Suspense } from 'react'
+import { useMemo, Suspense, useEffect } from 'react'
 import { useUser } from '@clerk/clerk-react'
-import { useQuery } from 'convex/react'
+import { useQuery, useMutation } from 'convex/react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 import { GameWindow } from '@/components/game/GameWindow'
-import { GameProvider } from '@/game/state'
-import type { Agent, GameBootstrapData, Goal } from '@/game/state'
+import { GameProvider, useGame } from '@/game/state'
+import type { Agent, Building, BuildingType, DistrictId, GameBootstrapData, Goal } from '@/game/state'
 import { usePhoneNumber } from '@/hooks/usePhoneNumber'
 import a1 from '@/assets/agent-1.png'
 import a2 from '@/assets/agent-2.png'
@@ -89,6 +89,37 @@ function mapIslandGoalsToUiGoals(
   }))
 }
 
+function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
+  const { syncFromConvex } = useGame()
+  const islandDetails = useQuery(api.islands.getIslandDetails, { islandId })
+  const islandBuildings = useQuery(api.buildings.getBuildings, { islandId })
+
+  useEffect(() => {
+    if (!islandDetails?.island) return
+    const level = islandDetails.island.islandLevel ?? 0
+    const totalXp = islandDetails.island.xp ?? 0
+    const progressInLevel = Math.max(0, totalXp - level * 20)
+    const xp = Math.min(100, Math.round((progressInLevel / 20) * 100))
+    syncFromConvex({ level, xp, coins: islandDetails.island.currency ?? 0 })
+  }, [islandDetails, syncFromConvex])
+
+  useEffect(() => {
+    if (!islandBuildings) return
+    syncFromConvex({
+      buildings: islandBuildings.map((b) => ({
+        id: b._id,
+        type: b.type as BuildingType,
+        pos: [b.gridX, b.gridY] as [number, number],
+        district: 'main' as DistrictId,
+        buildProgress: b.buildProgress,
+        buildTime: b.buildTimeDays,
+      })),
+    })
+  }, [islandBuildings, syncFromConvex])
+
+  return null
+}
+
 export function IslandPage() {
   const [searchParams] = useSearchParams()
   const islandIdParam = searchParams.get('islandId')
@@ -104,6 +135,11 @@ export function IslandPage() {
     api.goals.getIslandGoals,
     islandId ? { islandId } : 'skip',
   )
+  const islandBuildings = useQuery(
+    api.buildings.getBuildings,
+    islandId ? { islandId } : 'skip',
+  )
+  const placeBuildingMut = useMutation(api.buildings.placeBuilding)
 
   const bootstrap = useMemo<GameBootstrapData | null>(() => {
     if (!islandDetails || !islandDetails.island) return null
@@ -162,15 +198,40 @@ export function IslandPage() {
     const progressInLevel = Math.max(0, totalXp - level * 20)
     const xp = Math.min(100, Math.round((progressInLevel / 20) * 100))
 
+    const buildings: Building[] = (islandBuildings ?? []).map((b) => ({
+      id: b._id,
+      type: b.type as BuildingType,
+      pos: [b.gridX, b.gridY] as [number, number],
+      district: 'main' as DistrictId,
+      buildProgress: b.buildProgress,
+      buildTime: b.buildTimeDays,
+    }))
+
     return {
       islandName: islandDetails.island.name,
+      islandId: islandId ?? undefined,
+      phoneNumber: phone ?? undefined,
       level,
       xp,
       coins: islandDetails.island.currency ?? 0,
       agents,
       goals: mapIslandGoalsToUiGoals(islandGoals),
+      buildings,
+      onBuildingPlaced: (type, x, y, cost, days) => {
+        if (!islandId || !phone) return
+        placeBuildingMut({
+          islandId,
+          type,
+          gridX: x,
+          gridY: y,
+          costPaid: cost,
+          placedBy: phone,
+          buildTimeDays: days,
+        }).catch(console.error)
+      },
     }
-  }, [islandDetails, islandGoals, phone, user?.unsafeMetadata?.icloudEmail])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [islandDetails, islandGoals, islandBuildings, phone, user?.unsafeMetadata?.icloudEmail, islandId])
 
   if (!islandId) {
     return (
@@ -228,6 +289,7 @@ export function IslandPage() {
 
   return (
     <GameProvider key={islandId} initialData={bootstrap}>
+      <ConvexSyncBridge islandId={islandId} />
       <div className="island-harmony-root h-screen w-screen overflow-hidden">
         <Suspense fallback={
           <div className="grid h-screen w-screen place-items-center bg-neutral-900 text-white">
