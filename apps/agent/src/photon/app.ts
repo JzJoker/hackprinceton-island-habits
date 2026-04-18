@@ -1,43 +1,20 @@
-// Stub for Photon iMessage SDK integration
-// This would connect to Photon AI's iMessage API to send and receive messages
+import { Spectrum } from "spectrum-ts";
+import { imessage } from "spectrum-ts/providers/imessage";
+import "dotenv/config";
 
-interface PhotonMessage {
-  id: string;
-  text: string;
-  from: string;
-  groupId?: string;
-  timestamp: number;
-  groupMembers?: string[];
+export async function createApp() {
+  const projectId = process.env.projid;
+  const projectSecret = process.env.secret;
+
+  if (!projectId || !projectSecret) {
+    throw new Error("Missing projid or secret in environment (see apps/agent/.env.example)");
+  }
+
+  return Spectrum({
+    projectId,
+    projectSecret,
+    providers: [imessage.config()],
+  });
 }
 
-interface PhotonApp {
-  sendMessage(groupId: string, text: string): Promise<void>;
-  on(event: string, handler: (msg: PhotonMessage) => Promise<void>): void;
-  close(): Promise<void>;
-}
-
-export async function createApp(): Promise<PhotonApp> {
-  // TODO: Initialize Photon SDK with API key
-  // For now, return a stub that logs messages
-
-  const handlers: { [key: string]: (msg: PhotonMessage) => Promise<void> } = {};
-
-  const app: PhotonApp = {
-    async sendMessage(groupId: string, text: string) {
-      console.log(`[PHOTON] Sending to ${groupId}: ${text}`);
-      // TODO: Call Photon API to send message
-    },
-
-    on(event: string, handler: (msg: PhotonMessage) => Promise<void>) {
-      handlers[event] = handler;
-    },
-
-    async close() {
-      console.log("[PHOTON] Connection closed");
-    },
-  };
-
-  return app;
-}
-
-export type { PhotonMessage, PhotonApp };
+export type PhotonApp = Awaited<ReturnType<typeof createApp>>;
