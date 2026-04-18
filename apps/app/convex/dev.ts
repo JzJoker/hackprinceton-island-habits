@@ -10,6 +10,28 @@ const clamp = (value: number, min: number, max: number) =>
 // the agent row is created (mood ?? 70 in IslandPage/buildUiAgents).
 const DEFAULT_AGENT_MOTIVATION = 70;
 
+// The browser signs in with Clerk (phone or email), but the island may have
+// been created by Photon/iMessage using a different identifier. Try each
+// candidate against islandMembers so we always land on the canonical
+// phoneNumber the rest of the schema (agents/goals/checkIns) keys off of.
+async function resolveMemberPhone(
+  ctx: MutationCtx,
+  islandId: Id<"islands">,
+  candidates: (string | undefined)[],
+): Promise<string | undefined> {
+  const ids = candidates.filter((v): v is string => Boolean(v && v.length > 0));
+  for (const id of ids) {
+    const member = await ctx.db
+      .query("islandMembers")
+      .withIndex("by_island_phone", (q) =>
+        q.eq("islandId", islandId).eq("phoneNumber", id),
+      )
+      .first();
+    if (member) return member.phoneNumber;
+  }
+  return ids[0];
+}
+
 async function patchAgentMood(
   ctx: MutationCtx,
   islandId: Id<"islands">,
@@ -112,15 +134,21 @@ export const goodDay = mutation({
   args: {
     islandId: v.id("islands"),
     phoneNumber: v.optional(v.string()),
+    email: v.optional(v.string()),
   },
   async handler(ctx, args) {
     const island = await ctx.db.get(args.islandId);
     if (!island) throw new Error("Island not found");
 
+    const callerPhone = await resolveMemberPhone(ctx, args.islandId, [
+      args.phoneNumber,
+      args.email,
+    ]);
+
     const goalCount = await countActiveGoalsForUser(
       ctx,
       args.islandId,
-      args.phoneNumber,
+      callerPhone,
     );
     const currencyReward = goalCount * GOAL_REWARD_CURRENCY;
     const xpReward = goalCount * GOAL_REWARD_XP;
@@ -134,12 +162,12 @@ export const goodDay = mutation({
       dayCount: (island.dayCount ?? 1) + 1,
     });
 
-    await patchAgentMood(ctx, args.islandId, args.phoneNumber, 8);
+    await patchAgentMood(ctx, args.islandId, callerPhone, 8);
     // A "perfect day" advances buildings at full motivation — don't let a low
     // avg mood (common when agents haven't been onboarded yet, motivation=0)
     // gate the dev fast-forward. One good day = +1/buildTimeDays per building.
     await advanceConstructingBuildingsByDays(ctx, args.islandId, 1.0, 1);
-    return { ok: true, goalCount, currencyReward, xpReward };
+    return { ok: true, goalCount, currencyReward, xpReward, callerPhone };
   },
 });
 
@@ -147,20 +175,26 @@ export const badDay = mutation({
   args: {
     islandId: v.id("islands"),
     phoneNumber: v.optional(v.string()),
+    email: v.optional(v.string()),
   },
   async handler(ctx, args) {
     const island = await ctx.db.get(args.islandId);
     if (!island) throw new Error("Island not found");
+
+    const callerPhone = await resolveMemberPhone(ctx, args.islandId, [
+      args.phoneNumber,
+      args.email,
+    ]);
 
     await ctx.db.patch(args.islandId, {
       streakDays: 0,
       dayCount: (island.dayCount ?? 1) + 1,
     });
 
-    await patchAgentMood(ctx, args.islandId, args.phoneNumber, -15);
+    await patchAgentMood(ctx, args.islandId, callerPhone, -15);
     const motivationFactor = await getIslandMotivationFactor(ctx, args.islandId);
     await advanceConstructingBuildingsByDays(ctx, args.islandId, motivationFactor, 1);
-    return { ok: true };
+    return { ok: true, callerPhone };
   },
 });
 

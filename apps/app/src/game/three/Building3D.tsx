@@ -74,14 +74,16 @@ export const Building3D = ({ building }: Props) => {
   const isBuilding = building.buildProgress < 1;
   const progress = building.buildProgress;
 
-  // ETA in game-days: daysLeft = (1 - progress) × buildTime / groupMotivation
+  // ETA in game-days at full motivation — matches the semantics of the Good
+  // Day dev button (1 click = 1 game-day advance). Real-time pacing still
+  // scales by mood on the server ticker, but the label users read should
+  // answer "how many more good days until this finishes".
   const etaText = useMemo(() => {
-    if (groupMotivation <= 0) return "—";
-    const daysLeft = (1 - progress) * Math.max(1, building.buildTime) / groupMotivation;
+    const daysLeft = (1 - progress) * Math.max(1, building.buildTime);
     if (daysLeft < 0.1) return "<0.1 day";
     if (daysLeft < 1.05) return `~${daysLeft.toFixed(1)}d`;
     return `~${Math.ceil(daysLeft)}d`;
-  }, [groupMotivation, progress, building.buildTime]);
+  }, [progress, building.buildTime]);
 
   const motPct = Math.round(groupMotivation * 100);
 

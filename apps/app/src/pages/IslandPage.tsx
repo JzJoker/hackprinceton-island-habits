@@ -325,14 +325,16 @@ export function IslandPage() {
         if (!islandId) return Promise.reject(new Error('Missing island id'))
         return devGoodDayMut({
           islandId,
-          phoneNumber: participantIdentity ?? undefined,
+          phoneNumber: phone ?? undefined,
+          email: userEmail ?? undefined,
         }).then(() => undefined)
       },
       onDevNextDayBad: () => {
         if (!islandId) return Promise.reject(new Error('Missing island id'))
         return devBadDayMut({
           islandId,
-          phoneNumber: participantIdentity ?? undefined,
+          phoneNumber: phone ?? undefined,
+          email: userEmail ?? undefined,
         }).then(() => undefined)
       },
       onDevLevelUp: () => {
