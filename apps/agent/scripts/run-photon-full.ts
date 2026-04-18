@@ -27,6 +27,7 @@
  *   BOT_PHONE (optional)       — bot's own number, so we filter it out of member lists
  */
 
+import http from "http";
 import { Spectrum, text } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { ConvexHttpClient } from "convex/browser";
@@ -382,6 +383,46 @@ async function main(): Promise<void> {
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log(`CONVEX_URL=${CONVEX_URL}`);
   console.log(`Listening for commands: /start /help /goals /add /drop /edit /status\n`);
+
+  // Start HTTP server for outbound /send and /send-group from the Flask backend
+  const im = imessage(app);
+  const httpServer = http.createServer(async (req, res) => {
+    if (req.method !== "POST") {
+      res.writeHead(405).end(JSON.stringify({ error: "Method not allowed" }));
+      return;
+    }
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(body);
+    } catch {
+      res.writeHead(400).end(JSON.stringify({ error: "Invalid JSON" }));
+      return;
+    }
+    res.setHeader("Content-Type", "application/json");
+    try {
+      if (req.url === "/send") {
+        const { to, message: msg } = payload as { to: string; message: string };
+        const user = await im.user(to);
+        const space = await im.space(user);
+        await space.send(text(msg));
+        res.writeHead(200).end(JSON.stringify({ ok: true }));
+      } else if (req.url === "/send-group") {
+        const { participants, message: msg } = payload as { participants: string[]; message: string };
+        const users = await Promise.all(participants.map((p) => im.user(p)));
+        const space = await im.space(...(users as [typeof users[0], ...typeof users]));
+        await space.send(text(msg));
+        res.writeHead(200).end(JSON.stringify({ ok: true }));
+      } else {
+        res.writeHead(404).end(JSON.stringify({ error: "Not found" }));
+      }
+    } catch (err) {
+      console.error("HTTP send error:", err);
+      res.writeHead(500).end(JSON.stringify({ error: String(err) }));
+    }
+  });
+  httpServer.listen(3001, () => console.log("Agent HTTP server listening on port 3001"));
 
   for await (const [space, message] of app.messages) {
     const content = message.content[0];
