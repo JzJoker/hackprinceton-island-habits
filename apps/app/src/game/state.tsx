@@ -7,7 +7,7 @@ import a4 from "@/assets/agent-4.png";
 import a5 from "@/assets/agent-5.png";
 
 export type AgentId = string;
-export type ScreenId = "island" | "build" | "chat" | "recap" | "history" | "checkin" | "expand" | "party" | null;
+export type ScreenId = "island" | "build" | "chat" | "recap" | "history" | "checkin" | "expand" | "party" | "gossip" | null;
 export type BuildingType = "house" | "garden" | "library" | "gym" | "lighthouse" | "fountain" | "bonfire" | "cabin" | "dock" | "shrine" | "windmill" | "treehouse" | "bakery" | "teahouse" | "observatory" | "belltower" | "zengarden" | "crystalgrotto" | "amphitheater" | "moongate";
 export type DistrictId = "main" | "forest" | "beach" | "hill";
 

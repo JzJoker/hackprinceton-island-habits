@@ -5,6 +5,9 @@ import { OrbitControls, Environment, Float } from "@react-three/drei";
 import { EffectComposer, Pixelation, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
+import { useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { useGame, GameCtx, ISLAND_TIERS } from "../state";
 import type { Agent } from "../state";
 import { Building3D } from "./Building3D";
@@ -422,33 +425,75 @@ const WAYPOINTS: [number, number][] = [
 /* ── Main scene ──────────────────────────────────────── */
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:5001";
 const GOSSIP_ENDPOINT = "/jobs/agent-gossip";
-const GOSSIP_BUBBLE_MS = 5000;
+const SEC_PER_LINE = 2500; // ms each conversation line is shown
 
-const Scene = ({ agentTrackPos }: { agentTrackPos: MutableRefObject<THREE.Vector3> }) => {
+type ConvLine = { speaker: 'a' | 'b'; text: string };
+type ActiveConv = {
+  agentAId: string;
+  agentBId: string;
+  agentAPosCapture: THREE.Vector3;
+  agentBPosCapture: THREE.Vector3;
+};
+type SaveConversationFn = (agentAPhone: string, agentBPhone: string, lines: ConvLine[]) => void;
+
+const Scene = ({
+  agentTrackPos,
+  saveConversation,
+}: {
+  agentTrackPos: MutableRefObject<THREE.Vector3>;
+  saveConversation: SaveConversationFn;
+}) => {
   const { agents, buildings, scenery, selectedAgent, setSelectedAgent, placingType, islandEra, viewingEra, islandHistory } = useGame();
   const agentPositions = useRef(new Map<string, THREE.Vector3>());
+  const [activeConv, setActiveConv] = useState<ActiveConv | null>(null);
   const [gossipBubbles, setGossipBubbles] = useState<Map<string, string>>(new Map());
 
   const onGossip = useCallback((agentA: Agent, agentB: Agent) => {
+    const posA = agentPositions.current.get(agentA.id)?.clone() ?? new THREE.Vector3();
+    const posB = agentPositions.current.get(agentB.id)?.clone() ?? new THREE.Vector3();
+
+    // Freeze both agents immediately
+    setActiveConv({ agentAId: agentA.id, agentBId: agentB.id, agentAPosCapture: posA, agentBPosCapture: posB });
+
     void fetch(`${BACKEND_URL}${GOSSIP_ENDPOINT}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        agent_personality: agentA.goal,
-        recent_events: [`Just met ${agentB.name} on the island`],
+        agent_a_personality: { name: agentA.name, goal: agentA.goal, mood: agentA.mood },
+        agent_b_personality: { name: agentB.name, goal: agentB.goal, mood: agentB.mood },
+        recent_events: [`${agentA.name} and ${agentB.name} met on the island`],
       }),
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { message?: string; gossip?: string; text?: string } | null) => {
-        const msg = data?.message ?? data?.gossip ?? data?.text;
-        if (!msg) return;
-        setGossipBubbles((prev) => new Map(prev).set(agentA.id, msg));
+      .then((data: { lines?: ConvLine[] } | null) => {
+        const lines = data?.lines;
+        if (!lines?.length) { setActiveConv(null); return; }
+
+        // Play lines sequentially
+        lines.forEach((line, i) => {
+          const speakerId = line.speaker === 'a' ? agentA.id : agentB.id;
+          const clearPrevId = i > 0 ? (lines[i - 1].speaker === 'a' ? agentA.id : agentB.id) : null;
+          setTimeout(() => {
+            setGossipBubbles((prev) => {
+              const next = new Map(prev);
+              if (clearPrevId) next.delete(clearPrevId);
+              next.set(speakerId, line.text);
+              return next;
+            });
+          }, i * SEC_PER_LINE);
+        });
+
+        // End conversation
+        const totalMs = lines.length * SEC_PER_LINE;
         setTimeout(() => {
-          setGossipBubbles((prev) => { const n = new Map(prev); n.delete(agentA.id); return n; });
-        }, GOSSIP_BUBBLE_MS);
+          setGossipBubbles(new Map());
+          setActiveConv(null);
+          saveConversation(agentA.id, agentB.id, lines);
+        }, totalMs + 500);
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => { setActiveConv(null); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveConversation]);
 
   const displayEra = viewingEra ?? islandEra;
   const tier = ISLAND_TIERS[displayEra];
@@ -515,6 +560,11 @@ const Scene = ({ agentTrackPos }: { agentTrackPos: MutableRefObject<THREE.Vector
             if (a.isYou) agentTrackPos.current.copy(p);
           }}
           gossipText={gossipBubbles.get(a.id) ?? null}
+          gossipFrozenFacingPos={
+            activeConv?.agentAId === a.id ? activeConv.agentBPosCapture :
+            activeConv?.agentBId === a.id ? activeConv.agentAPosCapture :
+            null
+          }
         />
       ))}
 
@@ -534,6 +584,21 @@ export const Island3D = () => {
   const trackAgent = game?.trackAgent ?? false;
   const agentTrackPos = useRef(new THREE.Vector3());
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
+  const islandId = game?.islandId ?? null;
+  const saveConversationMut = useMutation(api.gossip.saveConversation);
+  const saveConversation = useCallback<SaveConversationFn>(
+    (agentAPhone, agentBPhone, lines) => {
+      if (!islandId) return;
+      saveConversationMut({
+        islandId: islandId as Id<"islands">,
+        agentAPhone,
+        agentBPhone,
+        lines,
+        timestamp: Date.now(),
+      }).catch(console.error);
+    },
+    [islandId, saveConversationMut],
+  );
 
   return (
     <div style={{ width: "100%", height: "100%" }}>
@@ -549,7 +614,7 @@ export const Island3D = () => {
         style={{ width: "100%", height: "100%" }}
       >
         <GameCtx.Provider value={game}>
-          <Scene agentTrackPos={agentTrackPos} />
+          <Scene agentTrackPos={agentTrackPos} saveConversation={saveConversation} />
           <CameraTracker tracking={trackAgent} agentPos={agentTrackPos} controlsRef={controlsRef} />
           <OrbitControls
             ref={controlsRef}

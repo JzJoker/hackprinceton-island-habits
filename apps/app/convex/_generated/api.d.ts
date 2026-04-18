@@ -11,6 +11,7 @@
 import type * as agents from "../agents.js";
 import type * as buildings from "../buildings.js";
 import type * as goals from "../goals.js";
+import type * as gossip from "../gossip.js";
 import type * as islands from "../islands.js";
 import type * as jobMutations from "../jobMutations.js";
 import type * as jobQueries from "../jobQueries.js";
@@ -25,6 +26,7 @@ declare const fullApi: ApiFromModules<{
   agents: typeof agents;
   buildings: typeof buildings;
   goals: typeof goals;
+  gossip: typeof gossip;
   islands: typeof islands;
   jobMutations: typeof jobMutations;
   jobQueries: typeof jobQueries;

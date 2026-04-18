@@ -112,12 +112,13 @@ def roast_goal(player_name: str, proposed_goal: str) -> str:
     return call_k2(_load("prompt_goal_roaster.md"), user, max_tokens=120)
 
 
-def generate_agent_gossip(agent_personality: dict, recent_events: list) -> dict:
+def generate_agent_gossip(agent_a_personality: dict, agent_b_personality: dict, recent_events: list) -> dict:
     user = (
-        f"Agent personality: {json.dumps(agent_personality)}\n"
+        f"Agent A personality: {json.dumps(agent_a_personality)}\n"
+        f"Agent B personality: {json.dumps(agent_b_personality)}\n"
         f"Recent island events: {json.dumps(recent_events)}"
     )
-    return call_k2_json(_load("prompt_agent_gossip.md"), user, max_tokens=150)
+    return call_k2_json(_load("prompt_agent_gossip.md"), user, max_tokens=400)
 
 
 def generate_reward_item(completed_goal: str, agent_personality: dict) -> dict:

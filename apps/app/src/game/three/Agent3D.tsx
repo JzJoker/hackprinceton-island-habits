@@ -15,6 +15,7 @@ interface Props {
   islandRadius?: number;
   onPositionUpdate?: (pos: THREE.Vector3) => void;
   gossipText?: string | null;
+  gossipFrozenFacingPos?: THREE.Vector3 | null;
 }
 
 const hashAgentId = (input: string): number => {
@@ -29,7 +30,7 @@ const hashAgentId = (input: string): number => {
 const smoothStep = (t: number) => t * t * (3 - 2 * t);
 
 /* ── Chibi-style cozy villager agent ──────────────────── */
-export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelected, islandRadius = 7.0, onPositionUpdate, gossipText }: Props) => {
+export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelected, islandRadius = 7.0, onPositionUpdate, gossipText, gossipFrozenFacingPos }: Props) => {
   const group = useRef<THREE.Group>(null);
   const bodyGroup = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Mesh>(null);
@@ -68,6 +69,23 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
 
   useFrame((_state, delta) => {
     if (!group.current) return;
+
+    // ── Gossip freeze mode: stop movement, face partner ──
+    if (gossipFrozenFacingPos) {
+      const dx = gossipFrozenFacingPos.x - pos.current.x;
+      const dz = gossipFrozenFacingPos.z - pos.current.z;
+      angle.current = Math.atan2(dx, dz);
+      group.current.position.copy(pos.current);
+      group.current.rotation.y = angle.current;
+      onPositionUpdate?.(pos.current);
+      walkCycle.current = 0;
+      if (leftLeg.current) leftLeg.current.rotation.x = 0;
+      if (rightLeg.current) rightLeg.current.rotation.x = 0;
+      if (leftArm.current) { leftArm.current.rotation.x = 0; leftArm.current.rotation.z = 0; }
+      if (rightArm.current) { rightArm.current.rotation.x = 0; rightArm.current.rotation.z = 0; }
+      if (bodyGroup.current) { bodyGroup.current.position.y = Math.sin(Date.now() * 0.002) * 0.008; bodyGroup.current.rotation.z = 0; }
+      return;
+    }
 
     const route = orderedWaypoints.length > 0 ? orderedWaypoints : [agent.home];
     const routeLen = route.length;

@@ -111,4 +111,12 @@ export default defineSchema({
   })
     .index("by_agent", ["agentId"])
     .index("by_agent_sent", ["agentId", "sentAt"]),
+
+  gossipConversations: defineTable({
+    islandId: v.id("islands"),
+    agentAPhone: v.string(),
+    agentBPhone: v.string(),
+    lines: v.array(v.object({ speaker: v.string(), text: v.string() })),
+    timestamp: v.number(),
+  }).index("by_island", ["islandId"]),
 });

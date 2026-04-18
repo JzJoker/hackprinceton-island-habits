@@ -7,6 +7,7 @@ import { BuildOverlay } from "@/game/overlays/BuildOverlay";
 import { RecapOverlay } from "@/game/overlays/RecapOverlay";
 import { HistoryOverlay } from "@/game/overlays/HistoryOverlay";
 import { ExpandOverlay } from "@/game/overlays/ExpandOverlay";
+import { GossipHistoryOverlay } from "@/game/overlays/GossipHistoryOverlay";
 import { PartyOverlay } from "@/game/overlays/PartyOverlay";
 import { ToastLayer } from "@/game/overlays/ToastLayer";
 import { MobilePlacingHUD } from "./MobilePlacingHUD";
@@ -14,10 +15,10 @@ import { DevPanel } from "./DevPanel";
 import { useGame } from "@/game/state";
 
 const TrackAgentButton = () => {
-  const { trackAgent, setTrackAgent, viewingEra } = useGame();
+  const { trackAgent, setTrackAgent, viewingEra, setScreen } = useGame();
   if (viewingEra !== null) return null;
   return (
-    <div className="absolute bottom-24 right-4 sm:right-auto sm:left-4 pointer-events-auto">
+    <div className="absolute bottom-24 right-4 sm:right-auto sm:left-4 pointer-events-auto flex flex-col gap-2">
       <button
         onClick={() => setTrackAgent(!trackAgent)}
         className={`hud-panel px-3 py-2 text-xs font-bold rounded-xl active:scale-95 transition shadow-float ${
@@ -25,6 +26,12 @@ const TrackAgentButton = () => {
         }`}
       >
         {trackAgent ? "🎯 Tracking" : "🎯 Track Me"}
+      </button>
+      <button
+        onClick={() => setScreen("gossip")}
+        className="hud-panel px-3 py-2 text-xs font-bold rounded-xl active:scale-95 transition shadow-float opacity-80"
+      >
+        💬 Gossip Log
       </button>
     </div>
   );
@@ -134,6 +141,7 @@ export const GameWindow = () => (
         <RecapOverlay />
         <HistoryOverlay />
         <ExpandOverlay />
+        <GossipHistoryOverlay />
       </div>
 
       {/* Transition overlay — shown during island graduation */}
