@@ -138,5 +138,6 @@ export default defineSchema({
     agentBPhone: v.string(),
     lines: v.array(v.object({ speaker: v.string(), text: v.string() })),
     timestamp: v.number(),
+    reasoning: v.optional(v.string()),
   }).index("by_island", ["islandId"]),
 });

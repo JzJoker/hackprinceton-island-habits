@@ -11,7 +11,8 @@ export const saveConversation = mutation({
     reasoning: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    return ctx.db.insert("gossipConversations", args);
+    const { reasoning: _reasoning, ...conversation } = args;
+    return ctx.db.insert("gossipConversations", conversation);
   },
 });
 

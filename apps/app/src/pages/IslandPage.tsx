@@ -34,6 +34,7 @@ const STYLE_PALETTES = [
   { skin: '#D9A878', shirt: '#F2C46C', pants: '#3A2A1A', hair: '#2A1810', hairStyle: 'short' as const },
   { skin: '#F0D3B0', shirt: '#C9A0E0', pants: '#5A4030', hair: '#5A3820', hairStyle: 'short' as const },
 ]
+const GOAL_REWARD_CURRENCY = 10
 
 function hashString(input: string): number {
   let hash = 0
@@ -70,16 +71,18 @@ function mapIslandGoalsToUiGoals(
   goals: {
     _id: Id<'goals'>
     text: string
+    reward?: number | null
   }[] | undefined,
   checkedInGoalIds: Set<string>,
 ): Goal[] {
   if (!goals || goals.length === 0) return []
 
-  return goals.slice(0, 10).map((goal, idx) => ({
+  return goals.slice(0, 10).map((goal) => ({
     id: goal._id,
     text: goal.text,
     done: checkedInGoalIds.has(goal._id),
-    reward: 10 + ((idx % 3) + 1) * 5,
+    // Keep UI reward in lockstep with Convex goals.checkIn/dev.goodDay (+10).
+    reward: goal.reward ?? GOAL_REWARD_CURRENCY,
     photo: false,
   }))
 }
@@ -157,9 +160,9 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
   const islandDetails = useQuery(api.islands.getIslandDetails, { islandId })
   const islandBuildings = useQuery(api.buildings.getBuildings, { islandId })
   const islandGoals = useQuery(api.goals.getIslandGoals, { islandId })
-  const dailyCheckIns = useQuery(
-    api.goals.getIslandCheckInsByDate,
-    { islandId, date: new Date().toISOString().slice(0, 10) },
+  const todayCheckIns = useQuery(
+    api.goals.getTodayCheckIns,
+    phoneNumber ? { islandId, phoneNumber, date: new Date().toISOString().slice(0, 10) } : 'skip',
   )
 
   useEffect(() => {
@@ -216,10 +219,10 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
     syncFromConvex({
       goals: mapIslandGoalsToUiGoals(
         myGoals,
-        new Set((dailyCheckIns ?? []).map((checkIn) => checkIn.goalId)),
+        new Set((todayCheckIns ?? []).map((checkIn) => checkIn.goalId)),
       ),
     })
-  }, [islandGoals, dailyCheckIns, phoneNumber, syncFromConvex])
+  }, [islandGoals, todayCheckIns, phoneNumber, syncFromConvex])
 
   return null
 }
@@ -245,9 +248,11 @@ export function IslandPage() {
     api.buildings.getBuildings,
     islandId ? { islandId } : 'skip',
   )
-  const dailyCheckIns = useQuery(
-    api.goals.getIslandCheckInsByDate,
-    islandId ? { islandId, date: new Date().toISOString().slice(0, 10) } : 'skip',
+  const todayCheckIns = useQuery(
+    api.goals.getTodayCheckIns,
+    islandId && participantIdentity
+      ? { islandId, phoneNumber: participantIdentity, date: new Date().toISOString().slice(0, 10) }
+      : 'skip',
   )
   const placeBuildingMut = useMutation(api.buildings.placeBuilding)
   const checkInMut = useMutation(api.goals.checkIn)
@@ -310,7 +315,7 @@ export function IslandPage() {
         participantIdentity
           ? (islandGoals ?? []).filter((g) => g.phoneNumber === participantIdentity)
           : islandGoals,
-        new Set((dailyCheckIns ?? []).map((c) => c.goalId)),
+        new Set((todayCheckIns ?? []).map((c) => c.goalId)),
       ),
       buildings,
       onBuildingPlaced: (type, x, y, cost, days) => {
@@ -366,7 +371,7 @@ export function IslandPage() {
       },
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [islandDetails, islandGoals, islandBuildings, dailyCheckIns, phone, userEmail, participantIdentity, islandId, checkInMut, placeBuildingMut, devGoodDayMut, devBadDayMut, devLevelUpMut, graduateEraMut])
+  }, [islandDetails, islandGoals, islandBuildings, todayCheckIns, phone, userEmail, participantIdentity, islandId, checkInMut, placeBuildingMut, devGoodDayMut, devBadDayMut, devLevelUpMut, graduateEraMut])
 
   if (!islandId) {
     return (

@@ -227,12 +227,16 @@ interface GameState {
   timeOffsetMs: number;
   trackAgent: boolean;
   setTrackAgent: (v: boolean) => void;
+  audioMuted: boolean;
+  setAudioMuted: (v: boolean) => void;
   syncFromConvex: (patch: ConvexSyncPatch) => void;
 
   // Dev controls (desktop only)
   devNextDay: () => void;       // ☀️✓ good day — all goals done, mood up
   devNextDayBad: () => void;    // ☀️✗ bad day  — no goals done, mood down
   devLevelUp: () => void;
+  triggerTestGossip: () => void;
+  gossipTestNonce: number;
 
   // Real-time build progress (called by BuildTicker in scene)
   tickBuildings: (delta: number) => void;
@@ -391,8 +395,8 @@ export const GameProvider = ({
   initialData?: GameBootstrapData;
 }) => {
   const seededIslandName = initialData?.islandName ?? "Pine Hollow";
-  const seededAgents = initialData?.agents?.length ? initialData.agents : initialAgents;
-  const seededGoals = initialData?.goals?.length ? initialData.goals : initialGoals;
+  const seededAgents = initialData ? (initialData.agents ?? []) : initialAgents;
+  const seededGoals = initialData ? (initialData.goals ?? []) : initialGoals;
   const onBuildingPlacedRef = useRef(initialData?.onBuildingPlaced);
   const onGoalCompletedRef = useRef(initialData?.onGoalCompleted);
   const onDevNextDayRef = useRef(initialData?.onDevNextDay);
@@ -441,6 +445,8 @@ export const GameProvider = ({
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isVisiting, setIsVisiting] = useState(false);
   const [viewingEra, setViewingEra] = useState<number | null>(null);
+  const [audioMuted, setAudioMuted] = useState(true);
+  const [gossipTestNonce, setGossipTestNonce] = useState(0);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -698,6 +704,11 @@ export const GameProvider = ({
     showToast("⚡ Level up!");
   }, [islandId, showToast]);
 
+  const triggerTestGossip = useCallback(() => {
+    setGossipTestNonce((n) => n + 1);
+    showToast("💬 Triggering test gossip...");
+  }, [showToast]);
+
   const completeGoal = useCallback((id: string) => {
     const goalToComplete = goals.find((goal) => goal.id === id);
     if (!goalToComplete || goalToComplete.done) {
@@ -784,8 +795,9 @@ export const GameProvider = ({
       phoneNumber,
       timeOffsetMs,
       trackAgent, setTrackAgent,
+      audioMuted, setAudioMuted,
       syncFromConvex,
-      devNextDay, devNextDayBad, devLevelUp,
+      devNextDay, devNextDayBad, devLevelUp, triggerTestGossip, gossipTestNonce,
       tickBuildings,
       groupMotivation,
     }}>

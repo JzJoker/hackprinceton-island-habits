@@ -1,4 +1,4 @@
-import { Coins, Flame, Sparkles, Sun, Home, ChevronDown, Zap } from "lucide-react";
+import { Coins, Flame, Sparkles, Sun, Home, ChevronDown, Zap, Volume2, VolumeX } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useGame } from "@/game/state";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -8,7 +8,7 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export const TopBar = () => {
   const navigate = useNavigate();
-  const { coins, streak, dayCount, level, xp, agents, screen, setScreen, islandName } = useGame();
+  const { coins, streak, dayCount, level, xp, agents, screen, setScreen, islandName, audioMuted, setAudioMuted } = useGame();
   const isMobile = useIsMobile();
   const onlineCount = agents.filter((a) => a.online).length;
 
@@ -31,6 +31,21 @@ export const TopBar = () => {
         className="absolute top-0 left-0 right-0 z-30 pointer-events-none"
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
+        <div className="absolute top-2 right-3 pointer-events-auto">
+          <button
+            onClick={() => setAudioMuted(!audioMuted)}
+            title={audioMuted ? "Unmute agent voices" : "Mute agent voices"}
+            aria-label={audioMuted ? "Unmute agent voices" : "Mute agent voices"}
+            className="hud-panel-dark h-9 w-9 flex items-center justify-center active:scale-95 transition"
+          >
+            {audioMuted ? (
+              <VolumeX className="h-4 w-4" strokeWidth={2.5} />
+            ) : (
+              <Volume2 className="h-4 w-4" strokeWidth={2.5} />
+            )}
+          </button>
+        </div>
+
         {/* Single unified card — all info lives here */}
         <div className="mx-3 mt-2 pointer-events-auto">
           <div className="hud-panel overflow-hidden">
@@ -191,6 +206,18 @@ export const TopBar = () => {
               <p className="text-[11px] font-extrabold display-font">{season} · {dayOfWeek}</p>
             </div>
           </div>
+          <button
+            onClick={() => setAudioMuted(!audioMuted)}
+            title={audioMuted ? "Unmute agent voices" : "Mute agent voices"}
+            aria-label={audioMuted ? "Unmute agent voices" : "Mute agent voices"}
+            className="hud-panel-dark h-10 w-10 flex items-center justify-center hover:scale-105 transition"
+          >
+            {audioMuted ? (
+              <VolumeX className="h-4 w-4" strokeWidth={2.5} />
+            ) : (
+              <Volume2 className="h-4 w-4" strokeWidth={2.5} />
+            )}
+          </button>
           <button
             onClick={() => navigate("/dashboard")}
             title="Your Islands"

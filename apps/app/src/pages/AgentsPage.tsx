@@ -303,7 +303,7 @@ const ReasoningModal = ({
   island: IslandInfo
   onClose: () => void
 }) => {
-  const { member, agent, messages } = character
+  const { member, messages } = character
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
@@ -482,7 +482,7 @@ const GossipModal = ({
   allCharacters: Character[]
   onClose: () => void
 }) => {
-  const { member, agent } = character
+  const { member } = character
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)

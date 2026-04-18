@@ -1,4 +1,4 @@
-import { useContext, useRef, useMemo, useState, useCallback } from "react";
+import { useContext, useRef, useMemo, useState, useCallback, useEffect } from "react";
 import type { MutableRefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Environment, Float } from "@react-three/drei";
@@ -432,6 +432,7 @@ const WAYPOINTS: [number, number][] = [
 /* ── Main scene ──────────────────────────────────────── */
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:5001";
 const GOSSIP_ENDPOINT = "/jobs/agent-gossip";
+const TTS_ENDPOINT = "/jobs/agent-tts";
 const SEC_PER_LINE = 2500; // ms each conversation line is shown
 
 type ConvLine = { speaker: 'a' | 'b'; text: string };
@@ -461,11 +462,122 @@ const Scene = ({
     viewingEra,
     islandHistory,
     timeOffsetMs,
+    audioMuted,
+    gossipTestNonce,
+    showToast,
   } = useGame();
   const agentPositions = useRef(new Map<string, THREE.Vector3>());
   const [activeConv, setActiveConv] = useState<ActiveConv | null>(null);
   const [gossipBubbles, setGossipBubbles] = useState<Map<string, string>>(new Map());
   const [approachIntent, setApproachIntent] = useState<{ aId: string; bId: string } | null>(null);
+  const lastGossipTestNonceRef = useRef(gossipTestNonce);
+  const preferBrowserTtsRef = useRef(false);
+  const ttsWarnedRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const ttsAbortRef = useRef<AbortController | null>(null);
+
+  const stopSpeechPlayback = useCallback(() => {
+    if (ttsAbortRef.current) {
+      ttsAbortRef.current.abort();
+      ttsAbortRef.current = null;
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+  }, []);
+
+  const speakWithBrowserTts = useCallback(
+    (text: string, speaker: "a" | "b") => {
+      if (audioMuted || typeof window === "undefined" || !("speechSynthesis" in window)) {
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.02;
+      utterance.pitch = speaker === "a" ? 1.1 : 0.95;
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        const idx = speaker === "a" ? 0 : Math.min(1, voices.length - 1);
+        utterance.voice = voices[idx];
+      }
+      window.speechSynthesis.speak(utterance);
+    },
+    [audioMuted],
+  );
+
+  useEffect(() => {
+    if (audioMuted) {
+      stopSpeechPlayback();
+    }
+  }, [audioMuted, stopSpeechPlayback]);
+
+  useEffect(() => stopSpeechPlayback, [stopSpeechPlayback]);
+
+  const speakLine = useCallback(
+    async (text: string, speaker: "a" | "b") => {
+      if (audioMuted || !text.trim()) return;
+      if (preferBrowserTtsRef.current) {
+        speakWithBrowserTts(text, speaker);
+        return;
+      }
+      stopSpeechPlayback();
+
+      const controller = new AbortController();
+      ttsAbortRef.current = controller;
+      try {
+        const response = await fetch(`${BACKEND_URL}${TTS_ENDPOINT}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, speaker }),
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          preferBrowserTtsRef.current = true;
+          if (!ttsWarnedRef.current) {
+            showToast("ElevenLabs unavailable, using browser voice fallback.");
+            ttsWarnedRef.current = true;
+          }
+          speakWithBrowserTts(text, speaker);
+          return;
+        }
+
+        const audioBlob = await response.blob();
+        if (controller.signal.aborted || audioMuted) return;
+
+        const audioUrl = URL.createObjectURL(audioBlob);
+        audioUrlRef.current = audioUrl;
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+        void audio.play().catch(() => {
+          // Browser autoplay/user-gesture restrictions can block MP3 playback.
+          speakWithBrowserTts(text, speaker);
+        });
+
+        audio.onended = () => {
+          if (audioUrlRef.current) {
+            URL.revokeObjectURL(audioUrlRef.current);
+            audioUrlRef.current = null;
+          }
+          if (audioRef.current === audio) {
+            audioRef.current = null;
+          }
+        };
+      } catch {
+        speakWithBrowserTts(text, speaker);
+      } finally {
+        if (ttsAbortRef.current === controller) {
+          ttsAbortRef.current = null;
+        }
+      }
+    },
+    [audioMuted, stopSpeechPlayback, speakWithBrowserTts, showToast],
+  );
 
   const onGossip = useCallback((agentA: Agent, agentB: Agent) => {
     const posA = agentPositions.current.get(agentA.id)?.clone() ?? new THREE.Vector3();
@@ -501,6 +613,7 @@ const Scene = ({
               next.set(speakerId, line.text);
               return next;
             });
+            void speakLine(line.text, line.speaker);
           }, i * SEC_PER_LINE);
         });
 
@@ -514,7 +627,31 @@ const Scene = ({
       })
       .catch(() => { setActiveConv(null); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saveConversation]);
+  }, [saveConversation, speakLine]);
+
+  useEffect(() => {
+    if (gossipTestNonce === lastGossipTestNonceRef.current) return;
+    lastGossipTestNonceRef.current = gossipTestNonce;
+
+    if (viewingEra !== null) {
+      showToast("Return home to trigger test gossip.");
+      return;
+    }
+    if (activeConv) {
+      showToast("Wait for current gossip to finish.");
+      return;
+    }
+    if (agents.length < 2) {
+      showToast("Need at least 2 agents to gossip.");
+      return;
+    }
+
+    const shuffled = [...agents].sort(() => Math.random() - 0.5);
+    const [a, b] = shuffled;
+    if (a && b) {
+      onGossip(a, b);
+    }
+  }, [gossipTestNonce, viewingEra, activeConv, agents, onGossip, showToast]);
 
   const displayEra = viewingEra ?? islandEra;
   const tier = ISLAND_TIERS[displayEra];
