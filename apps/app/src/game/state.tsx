@@ -235,8 +235,6 @@ interface GameState {
   devNextDay: () => void;       // ☀️✓ good day — all goals done, mood up
   devNextDayBad: () => void;    // ☀️✗ bad day  — no goals done, mood down
   devLevelUp: () => void;
-  triggerTestGossip: () => void;
-  gossipTestNonce: number;
 
   // Real-time build progress (called by BuildTicker in scene)
   tickBuildings: (delta: number) => void;
@@ -446,7 +444,6 @@ export const GameProvider = ({
   const [isVisiting, setIsVisiting] = useState(false);
   const [viewingEra, setViewingEra] = useState<number | null>(null);
   const [audioMuted, setAudioMuted] = useState(true);
-  const [gossipTestNonce, setGossipTestNonce] = useState(0);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -710,11 +707,6 @@ export const GameProvider = ({
     showToast("⚡ Level up!");
   }, [islandId, showToast]);
 
-  const triggerTestGossip = useCallback(() => {
-    setGossipTestNonce((n) => n + 1);
-    showToast("💬 Triggering test gossip...");
-  }, [showToast]);
-
   const completeGoal = useCallback((id: string) => {
     const goalToComplete = goals.find((goal) => goal.id === id);
     if (!goalToComplete || goalToComplete.done) {
@@ -803,7 +795,7 @@ export const GameProvider = ({
       trackAgent, setTrackAgent,
       audioMuted, setAudioMuted,
       syncFromConvex,
-      devNextDay, devNextDayBad, devLevelUp, triggerTestGossip, gossipTestNonce,
+      devNextDay, devNextDayBad, devLevelUp,
       tickBuildings,
       groupMotivation,
     }}>

@@ -368,6 +368,7 @@ const MiniIslandPreview = ({
     }}>
       <Canvas
         dpr={[1, 1.5]}
+        frameloop="demand"
         style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
         gl={{ antialias: true, alpha: true, powerPreference: 'low-power' }}
         camera={{ position: [7.2, 5.0, 7.0], fov: 34 }}

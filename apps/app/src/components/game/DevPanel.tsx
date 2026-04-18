@@ -2,7 +2,7 @@ import { useGame } from "@/game/state";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export const DevPanel = () => {
-  const { devNextDay, devNextDayBad, devLevelUp, triggerTestGossip, level, streak, groupMotivation } = useGame();
+  const { devNextDay, devNextDayBad, devLevelUp, level, streak, groupMotivation } = useGame();
   const isMobile = useIsMobile();
   if (isMobile) return null;
 
@@ -61,17 +61,6 @@ export const DevPanel = () => {
         </div>
       </button>
 
-      {/* Test gossip */}
-      <button
-        onClick={triggerTestGossip}
-        className="hud-panel-dark px-3 py-2 flex items-center gap-2 hover:scale-105 active:scale-95 transition text-left border border-blue-400/30"
-      >
-        <span className="text-base leading-none">💬</span>
-        <div className="leading-none">
-          <p className="text-[11px] font-black">Test Gossip</p>
-          <p className="text-[9px] opacity-50 font-semibold mt-0.5">force an agent conversation</p>
-        </div>
-      </button>
     </div>
   );
 };

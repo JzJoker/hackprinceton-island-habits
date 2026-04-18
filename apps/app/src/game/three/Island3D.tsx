@@ -2,7 +2,10 @@ import { useContext, useRef, useMemo, useState, useCallback, useEffect } from "r
 import type { MutableRefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Environment, Float } from "@react-three/drei";
-import { EffectComposer, Pixelation, Vignette } from "@react-three/postprocessing";
+// Postprocessing (EffectComposer + Pixelation + Vignette) removed —
+// combined with many MiniIslandPreview canvases on the dashboard it pushes
+// the tab past the browser's WebGL-context limit, and the composer can't
+// read `gl.alpha` off a null context. The scene renders fine without it.
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useMutation } from "convex/react";
@@ -463,14 +466,12 @@ const Scene = ({
     islandHistory,
     timeOffsetMs,
     audioMuted,
-    gossipTestNonce,
     showToast,
   } = useGame();
   const agentPositions = useRef(new Map<string, THREE.Vector3>());
   const [activeConv, setActiveConv] = useState<ActiveConv | null>(null);
   const [gossipBubbles, setGossipBubbles] = useState<Map<string, string>>(new Map());
   const [approachIntent, setApproachIntent] = useState<{ aId: string; bId: string } | null>(null);
-  const lastGossipTestNonceRef = useRef(gossipTestNonce);
   const preferBrowserTtsRef = useRef(false);
   const ttsWarnedRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -629,30 +630,6 @@ const Scene = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveConversation, speakLine]);
 
-  useEffect(() => {
-    if (gossipTestNonce === lastGossipTestNonceRef.current) return;
-    lastGossipTestNonceRef.current = gossipTestNonce;
-
-    if (viewingEra !== null) {
-      showToast("Return home to trigger test gossip.");
-      return;
-    }
-    if (activeConv) {
-      showToast("Wait for current gossip to finish.");
-      return;
-    }
-    if (agents.length < 2) {
-      showToast("Need at least 2 agents to gossip.");
-      return;
-    }
-
-    const shuffled = [...agents].sort(() => Math.random() - 0.5);
-    const [a, b] = shuffled;
-    if (a && b) {
-      onGossip(a, b);
-    }
-  }, [gossipTestNonce, viewingEra, activeConv, agents, onGossip, showToast]);
-
   const displayEra = viewingEra ?? islandEra;
   const tier = ISLAND_TIERS[displayEra];
   const displayBuildings = viewingEra !== null
@@ -802,10 +779,6 @@ export const Island3D = () => {
             dampingFactor={0.05}
             zoomSpeed={2.2}
           />
-          <EffectComposer multisampling={0} enableNormalPass={false}>
-            <Pixelation granularity={0.5} />
-            <Vignette eskil={false} offset={0.18} darkness={0.34} />
-          </EffectComposer>
         </GameCtx.Provider>
       </Canvas>
     </div>
