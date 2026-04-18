@@ -15,6 +15,36 @@ import a4 from '@/assets/agent-4.png'
 import a5 from '@/assets/agent-5.png'
 import '@/styles/islandHarmony.css'
 
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined)?.replace(/\/?$/, '/') ?? ''
+
+// Fire Flask jobs that normally live on a cron. For the demo, we piggy-back
+// on the Good Day / Bad Day dev buttons: every click represents advancing
+// one in-game day, so every click also fires the morning reminder, and a
+// weekly summary whenever the (post-mutation) dayCount is a fresh multiple
+// of 7. Failures are logged and swallowed so UI stays responsive.
+async function runDailyAnnouncements(islandBefore: { dayCount?: number }): Promise<void> {
+  if (!BACKEND_URL) {
+    console.warn('[announcements] VITE_BACKEND_URL is not set — skipping')
+    return
+  }
+  const post = (path: string) =>
+    fetch(`${BACKEND_URL}jobs/${path}`, { method: 'POST' })
+      .then((r) => r.ok ? null : `${path} returned ${r.status}`)
+      .catch((err: unknown) => `${path} failed: ${err instanceof Error ? err.message : String(err)}`)
+
+  const errors: (string | null)[] = [await post('morning-reminder')]
+
+  // dev.goodDay / badDay both increment dayCount by 1, so the new value is
+  // islandBefore.dayCount + 1. Fire weekly summary when that crosses a 7
+  // boundary (days 7, 14, 21...). The Convex filter protects against
+  // duplicate sends for the same boundary.
+  const newDayCount = (islandBefore.dayCount ?? 1) + 1
+  if (newDayCount >= 7 && newDayCount % 7 === 0) {
+    errors.push(await post('weekly-summary'))
+  }
+  for (const err of errors) if (err) console.warn('[announcements]', err)
+}
+
 const AGENT_IMAGES = [a1, a2, a3, a4, a5]
 const HOME_POINTS: [number, number][] = [
   [0.5, -1.2],
@@ -360,21 +390,27 @@ export function IslandPage() {
           date: new Date().toISOString().slice(0, 10),
         }).then(() => undefined)
       },
-      onDevNextDay: () => {
-        if (!islandId) return Promise.reject(new Error('Missing island id'))
-        return devGoodDayMut({
+      onDevNextDay: async () => {
+        if (!islandId) throw new Error('Missing island id')
+        await devGoodDayMut({
           islandId,
           phoneNumber: phone ?? undefined,
           email: userEmail ?? undefined,
-        }).then(() => undefined)
+        })
+        // Demo hook-up: every simulated day also fires the Flask reminder
+        // pipeline. Morning reminder for the new day + weekly summary when
+        // we just crossed a 7-day boundary. Fire-and-forget — the UI
+        // doesn't wait so the transition feels snappy.
+        await runDailyAnnouncements(islandDetails.island)
       },
-      onDevNextDayBad: () => {
-        if (!islandId) return Promise.reject(new Error('Missing island id'))
-        return devBadDayMut({
+      onDevNextDayBad: async () => {
+        if (!islandId) throw new Error('Missing island id')
+        await devBadDayMut({
           islandId,
           phoneNumber: phone ?? undefined,
           email: userEmail ?? undefined,
-        }).then(() => undefined)
+        })
+        await runDailyAnnouncements(islandDetails.island)
       },
       onDevLevelUp: () => {
         if (!islandId) return Promise.reject(new Error('Missing island id'))
