@@ -44,9 +44,12 @@ def create_knot_session():
     if not KNOT_CLIENT_ID or not KNOT_SECRET:
         return jsonify({"error": "Missing KNOT_CLIENT_ID or KNOT_SECRET."}), 500
 
+    body = request.get_json(silent=True) or {}
+    user_id = body.get("userId") or f"island-habits-{uuid.uuid4()}"
+
     payload = {
         "type": "transaction_link",
-        "external_user_id": f"island-habits-{uuid.uuid4()}",
+        "external_user_id": user_id,
     }
     headers = {
         "Authorization": _knot_auth_header(),

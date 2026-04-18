@@ -8,7 +8,6 @@ const KnotCtor =
   (KnotapiJS as { default?: new () => { open: (options: unknown) => void } })
     .default ??
   (KnotapiJS as unknown as new () => { open: (options: unknown) => void })
-const knotapi = new KnotCtor()
 
 type SessionResponse = { session: string }
 
@@ -19,22 +18,23 @@ export function SettingsPage() {
 
   const [connectingMerchants, setConnectingMerchants] = useState(false)
   const [merchantConnected, setMerchantConnected] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [knotError, setKnotError] = useState<string | null>(null)
   const [editingEmail, setEditingEmail] = useState(false)
   const [emailValue, setEmailValue] = useState(
     (user?.unsafeMetadata?.icloudEmail as string) ?? ''
   )
   const [savingEmail, setSavingEmail] = useState(false)
   const [emailSaved, setEmailSaved] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
 
   const handleSaveEmail = async () => {
     try {
       setSavingEmail(true)
-      setError(null)
+      setEmailError(null)
 
       // Validate email format
-      if (emailValue && !emailValue.includes('@')) {
-        setError('Invalid email format')
+      if (emailValue && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
+        setEmailError('Invalid email format')
         setSavingEmail(false)
         return
       }
@@ -51,7 +51,7 @@ export function SettingsPage() {
       setTimeout(() => setEmailSaved(false), 3000)
       setEditingEmail(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save email')
+      setEmailError(err instanceof Error ? err.message : 'Failed to save email')
     } finally {
       setSavingEmail(false)
     }
@@ -64,7 +64,7 @@ export function SettingsPage() {
       (import.meta.env.VITE_KNOT_ENVIRONMENT as 'development' | 'production') ??
       'production'
 
-    setError(null)
+    setKnotError(null)
     setConnectingMerchants(true)
     try {
       if (!knotClientId) {
@@ -74,11 +74,15 @@ export function SettingsPage() {
       const response = await fetch(`${backendBaseUrl}/api/knot/session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id }),
       })
       if (!response.ok) {
         throw new Error(await response.text())
       }
       const data = (await response.json()) as SessionResponse
+
+      // Fresh instance per invocation to avoid stale state
+      const knotapi = new KnotCtor()
 
       knotapi.open({
         sessionId: data.session,
@@ -90,31 +94,32 @@ export function SettingsPage() {
         useSearch: false,
         onSuccess: (details: unknown) => {
           setMerchantConnected(true)
+          setConnectingMerchants(false)
           console.log('onSuccess', details)
         },
         onError: (errorCode: string, errorDescription: string) => {
           console.error('onError', errorCode, errorDescription)
-          setError(`${errorCode}: ${errorDescription}`)
+          setKnotError(`${errorCode}: ${errorDescription}`)
+          setConnectingMerchants(false)
         },
         onEvent: (
           event: string,
           merchant: string,
-          merchantId: number,
           payload: unknown,
           taskId: string,
         ) => {
-          console.log('onEvent', event, merchant, merchantId, payload, taskId)
+          console.log('onEvent', event, merchant, payload, taskId)
           if (event === 'AUTHENTICATED') {
             setMerchantConnected(true)
           }
         },
         onExit: () => {
           console.log('onExit')
+          setConnectingMerchants(false)
         },
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect merchants.')
-    } finally {
+      setKnotError(err instanceof Error ? err.message : 'Failed to connect merchants.')
       setConnectingMerchants(false)
     }
   }
@@ -190,6 +195,7 @@ export function SettingsPage() {
                     <button
                       onClick={() => {
                         setEditingEmail(false)
+                        setEmailError(null)
                         setEmailValue((user?.unsafeMetadata?.icloudEmail as string) ?? '')
                       }}
                       className="flex-1 rounded-lg border border-black bg-white px-4 py-2 font-semibold text-black transition hover:bg-neutral-100"
@@ -197,12 +203,17 @@ export function SettingsPage() {
                       Cancel
                     </button>
                   </div>
-                  {emailSaved && (
-                    <p className="text-sm text-black bg-green-50 border border-green-200 rounded p-2">
-                      ✓ Email saved
+                  {emailError && (
+                    <p className="text-sm text-black bg-red-50 border border-red-200 rounded p-2">
+                      Error: {emailError}
                     </p>
                   )}
                 </div>
+              )}
+              {emailSaved && (
+                <p className="text-sm text-black bg-green-50 border border-green-200 rounded p-2 mt-2">
+                  ✓ Email saved
+                </p>
               )}
             </div>
           </div>
@@ -215,8 +226,8 @@ export function SettingsPage() {
             <div className="border border-neutral-200 rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <p className="font-semibold text-black">Amazon Merchant Connection</p>
-                  <p className="text-sm text-neutral-600">Link your Amazon account to track spending</p>
+                  <p className="font-semibold text-black">DoorDash Merchant Connection</p>
+                  <p className="text-sm text-neutral-600">Link your DoorDash account to track spending</p>
                 </div>
                 <div className={`text-sm font-semibold px-3 py-1 rounded ${merchantConnected ? 'bg-green-100 text-green-800' : 'bg-neutral-100 text-neutral-800'}`}>
                   {merchantConnected ? 'Connected' : 'Not Connected'}
@@ -235,9 +246,9 @@ export function SettingsPage() {
                 ✓ Merchant connected successfully.
               </p>
             )}
-            {error && (
+            {knotError && (
               <p className="text-sm text-black bg-red-50 border border-red-200 rounded p-3">
-                Error: {error}
+                Error: {knotError}
               </p>
             )}
           </div>
