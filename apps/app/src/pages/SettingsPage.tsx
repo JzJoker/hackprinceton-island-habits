@@ -24,13 +24,15 @@ function useCozFont() {
 
 /* ── Design tokens ────────────────────────────────────── */
 const C = {
-  bg:         'linear-gradient(160deg, #0f0a20 0%, #0a1428 30%, #081e14 65%, #050e08 100%)',
-  card:       'rgba(16, 8, 2, 0.88)',
-  cardBorder: 'rgba(255,200,80,0.12)',
-  text:       '#f0ebe0',
-  textMuted:  'rgba(220,200,140,0.55)',
-  textLabel:  'rgba(210,190,120,0.65)',
-  green:      '#4db368',
+  bg:         'linear-gradient(180deg, #ecd8bf 0%, #b9e6ea 16%, #9ad3dd 62%, #89c8d6 100%)',
+  card:       '#f8f3e6',
+  cardBorder: '#d4b587',
+  navy:       '#1d3451',
+  navy2:      '#273f60',
+  text:       '#223856',
+  textMuted:  '#6d7b8f',
+  textLabel:  '#6c86a4',
+  green:      '#54c98a',
 }
 
 const fredoka = (size = 20): React.CSSProperties => ({
@@ -60,14 +62,14 @@ const BtnPrimary = ({
     disabled={disabled}
     style={{
       background: disabled
-        ? 'rgba(77,179,104,0.35)'
-        : 'linear-gradient(135deg, #4db368 0%, #389150 100%)',
-      border: 'none',
-      borderRadius: '12px',
+        ? 'linear-gradient(135deg, #9fdbbc 0%, #8dc9a9 100%)'
+        : 'linear-gradient(135deg, #57d196 0%, #3db97f 100%)',
+      border: '2px solid rgba(27,64,45,0.16)',
+      borderRadius: '16px',
       color: '#fff',
-      padding: '11px 20px',
+      padding: '10px 18px',
       cursor: disabled ? 'not-allowed' : 'pointer',
-      boxShadow: disabled ? 'none' : '0 4px 18px -4px rgba(60,180,90,0.55)',
+      boxShadow: disabled ? 'none' : '0 8px 18px -8px rgba(36,122,78,0.48)',
       transition: 'all 0.15s',
       width: '100%',
       ...nunito(900, 14),
@@ -88,12 +90,13 @@ const BtnGhost = ({
   <button
     onClick={onClick}
     style={{
-      background: 'rgba(255,255,255,0.06)',
-      border: '1.5px solid rgba(255,220,100,0.18)',
-      borderRadius: '12px',
-      color: C.text,
-      padding: '11px 20px',
+      background: '#ffffff',
+      border: '2px solid #d4e5ef',
+      borderRadius: '16px',
+      color: C.navy,
+      padding: '10px 16px',
       cursor: 'pointer',
+      boxShadow: '0 6px 12px -10px rgba(29,52,81,0.42)',
       transition: 'all 0.15s',
       width: '100%',
       ...nunito(800, 14),
@@ -109,9 +112,9 @@ const BtnDanger = ({ children, onClick }: { children: React.ReactNode; onClick?:
     onClick={onClick}
     style={{
       background: 'rgba(220,60,50,0.08)',
-      border: '1.5px solid rgba(220,60,50,0.25)',
-      borderRadius: '12px',
-      color: '#f87171',
+      border: '2px solid rgba(220,60,50,0.28)',
+      borderRadius: '14px',
+      color: '#b83732',
       padding: '12px 20px',
       cursor: 'pointer',
       transition: 'all 0.15s',
@@ -127,9 +130,10 @@ const BtnDanger = ({ children, onClick }: { children: React.ReactNode; onClick?:
 const Card = ({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) => (
   <div style={{
     background: C.card,
-    border: `1px solid ${C.cardBorder}`,
+    border: `2px solid ${C.cardBorder}`,
     borderRadius: '22px',
     padding: '22px 20px',
+    boxShadow: '0 12px 20px -18px rgba(31,67,101,0.52)',
     ...style,
   }}>
     {children}
@@ -148,7 +152,7 @@ const InfoRow = ({ label, value }: { label: string; value: string }) => (
   <div style={{
     paddingBottom: '12px',
     marginBottom: '12px',
-    borderBottom: '1px solid rgba(255,200,80,0.07)',
+    borderBottom: '1px solid rgba(135,167,199,0.2)',
   }}>
     <p style={{ ...nunito(700, 11), color: C.textLabel, textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 2px' }}>
       {label}
@@ -177,10 +181,10 @@ const GameInput = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
     style={{
       width: '100%',
       boxSizing: 'border-box',
-      background: 'rgba(255,255,255,0.06)',
-      border: '2px solid rgba(255,255,255,0.1)',
+      background: '#ffffff',
+      border: '2px solid #d6e5f2',
       borderRadius: '12px',
-      color: C.text,
+      color: C.navy,
       padding: '10px 14px',
       fontSize: '14px',
       fontFamily: "'Nunito', sans-serif",
@@ -275,28 +279,52 @@ export function SettingsPage() {
     <main style={{ minHeight: '100vh', position: 'relative', overflow: 'hidden auto' }}>
       {/* Background */}
       <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: C.bg }} />
-      <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 80% 50% at 50% 75%, rgba(18,80,45,0.18) 0%, transparent 100%)' }} />
+      <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 82% 46% at 50% 83%, rgba(130,207,220,0.65) 0%, rgba(130,207,220,0.0) 100%)' }} />
+      {[...Array(6)].map((_, i) => (
+        <div key={i} style={{
+          position: 'fixed',
+          width: 180 + (i % 3) * 110,
+          height: 180 + (i % 3) * 110,
+          borderRadius: '50%',
+          background: i % 2 === 0 ? 'rgba(255,255,255,0.28)' : 'rgba(199,236,243,0.34)',
+          left: `${(i * 17 + i * i * 5) % 94}%`,
+          top: `${2 + (i * 11 + i * 9) % 72}%`,
+          opacity: 0.55,
+          filter: 'blur(44px)',
+          zIndex: 0,
+          pointerEvents: 'none',
+          transform: 'translate(-50%, -50%)',
+        }} />
+      ))}
 
-      <div style={{ position: 'relative', zIndex: 1, maxWidth: '560px', margin: '0 auto', padding: '28px 16px 60px' }}>
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: '760px', margin: '0 auto', padding: '22px 14px 60px' }}>
 
         {/* ── Header ── */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '28px' }}>
-          <div>
-            <h1 style={{ ...fredoka(30), margin: 0 }}>Settings</h1>
-            <p style={{ ...nunito(700, 13), color: C.textMuted, marginTop: '4px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', marginBottom: '20px' }}>
+          <div style={{
+            background: `linear-gradient(160deg, ${C.navy} 0%, ${C.navy2} 100%)`,
+            border: '2px solid rgba(255,255,255,0.22)',
+            borderRadius: '24px',
+            padding: '14px 16px',
+            color: '#f2f7ff',
+            boxShadow: '0 14px 24px -18px rgba(14,34,55,0.75)',
+          }}>
+            <h1 style={{ ...fredoka(30), margin: 0, color: '#f6fbff' }}>Settings</h1>
+            <p style={{ ...nunito(700, 13), color: '#c5d9ea', marginTop: '4px' }}>
               Account &amp; connected services
             </p>
           </div>
           <button
             onClick={() => navigate('/dashboard')}
             style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1.5px solid rgba(255,220,100,0.18)',
-              borderRadius: '12px',
-              color: C.text,
+              background: '#ffffff',
+              border: '2px solid #d4e5ef',
+              borderRadius: '16px',
+              color: C.navy,
               padding: '9px 14px',
               cursor: 'pointer',
               flexShrink: 0,
+              boxShadow: '0 6px 12px -10px rgba(29,52,81,0.42)',
               ...nunito(800, 13),
             }}
           >
@@ -368,8 +396,8 @@ export function SettingsPage() {
             <CardTitle emoji="🔗">Connected Services</CardTitle>
 
             <div style={{
-              background: 'rgba(255,255,255,0.03)',
-              border: `1px solid ${C.cardBorder}`,
+              background: '#fffaf1',
+              border: `2px solid ${C.cardBorder}`,
               borderRadius: '16px',
               padding: '16px',
               marginBottom: '10px',
@@ -387,9 +415,9 @@ export function SettingsPage() {
                   padding: '4px 10px',
                   borderRadius: '20px',
                   flexShrink: 0,
-                  background: merchantConnected ? 'rgba(77,179,104,0.15)'  : 'rgba(255,255,255,0.06)',
-                  color:      merchantConnected ? '#86efac'                 : C.textMuted,
-                  border:     merchantConnected ? '1px solid rgba(77,179,104,0.3)' : `1px solid ${C.cardBorder}`,
+                  background: merchantConnected ? 'rgba(77,179,104,0.15)' : '#f3f8fd',
+                  color:      merchantConnected ? '#3a7f56'                : C.textMuted,
+                  border:     merchantConnected ? '1px solid rgba(77,179,104,0.3)' : '1px solid #d6e4f1',
                 }}>
                   {merchantConnected ? '✓ Connected' : 'Not connected'}
                 </span>
