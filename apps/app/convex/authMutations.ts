@@ -1,7 +1,7 @@
-import { internalMutation } from "./_generated/server";
+import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 
-export const upsertUser = internalMutation({
+export const upsertUser = mutation({
   args: { phoneNumber: v.string() },
   handler: async (ctx, { phoneNumber }) => {
     const existing = await ctx.db
@@ -22,7 +22,7 @@ export const upsertUser = internalMutation({
   },
 });
 
-export const createSession = internalMutation({
+export const createSession = mutation({
   args: { token: v.string(), userId: v.id("users") },
   handler: async (ctx, { token, userId }) => {
     await ctx.db.insert("sessions", {
