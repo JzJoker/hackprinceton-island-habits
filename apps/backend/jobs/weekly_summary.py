@@ -3,7 +3,7 @@ from flask import jsonify
 from jobs import jobs_bp
 from jobs.convex_client import get_client
 from jobs.k2 import generate_weekly_summary
-from jobs.photon import send_group_message
+from jobs.photon import send_island_message
 
 
 @jobs_bp.post("/weekly-summary")
@@ -18,6 +18,7 @@ def weekly_summary():
     db = get_client()
 
     islands = db.query("jobQueries:islandsReadyForWeeklySummary")
+    print(f"[weekly-summary] {len(islands)} islands due for summary")
     sent = 0
     failed = 0
 
@@ -31,19 +32,22 @@ def weekly_summary():
             events = entry["events"]
 
             if not phones:
+                print(f"[weekly-summary] island {island['_id']} has no phones — skip")
                 continue
 
             stats = _aggregate_stats(events, island)
+            print(f"[weekly-summary] K2 call for island {island['_id']} (checkins={stats['total_checkins']}, misses={stats['total_misses']})")
             narrative, reasoning = generate_weekly_summary(
                 stats["total_checkins"],
                 stats["total_misses"],
                 stats["builds_completed"],
                 stats["top_completer"] or "nobody",
             )
+            print(f"[weekly-summary] K2 → {narrative[:120]}")
             if reasoning:
                 stats["reasoning"] = reasoning
 
-            send_group_message(phones, narrative)
+            send_island_message(island["_id"], narrative)
 
             island_agent = next(
                 (e["agent"] for e in all_members if e["island"]["_id"] == island["_id"]),
