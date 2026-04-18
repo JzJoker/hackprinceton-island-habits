@@ -116,6 +116,11 @@ export default defineSchema({
     // buildings once the player flies to the next island (they still live in
     // the table so visits can browse history). Undefined = legacy = era 0.
     placedAtEra: v.optional(v.number()),
+    // Resource cost breakdown (if a building charges logs/rocks on top of
+    // currency). Present on newer documents; older rows leave these
+    // undefined and the schema tolerates both.
+    logCost: v.optional(v.number()),
+    rockCost: v.optional(v.number()),
   }).index("by_island", ["islandId"]),
 
   events: defineTable({
