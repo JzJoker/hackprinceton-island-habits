@@ -48,6 +48,82 @@ export const createAgent = mutation({
   },
 });
 
+// Directory of every island the user belongs to, with the full roster of
+// characters (islandMembers) for each — enriched with the agents row and
+// recent aiMessages when they exist. Drives the /agents dashboard.
+//
+// A character may have no agents row yet (the agent spawns on first goal).
+// We still return the member so the UI can show the character and explain
+// the missing state, matching how IslandPage renders members one-to-one.
+export const getAgentDirectoryForUser = query({
+  args: {
+    phoneNumber: v.optional(v.string()),
+    email: v.optional(v.string()),
+    messageLimit: v.optional(v.number()),
+  },
+  async handler(ctx, args) {
+    const identities = [args.phoneNumber, args.email].filter(
+      (v): v is string => typeof v === "string" && v.length > 0
+    );
+    if (identities.length === 0) return [];
+
+    const islandIds = new Set<string>();
+    for (const id of identities) {
+      const rows = await ctx.db
+        .query("islandMembers")
+        .withIndex("by_phone", (q) => q.eq("phoneNumber", id))
+        .collect();
+      for (const r of rows) islandIds.add(r.islandId as unknown as string);
+    }
+    if (islandIds.size === 0) return [];
+
+    const limit = Math.max(1, Math.min(50, args.messageLimit ?? 10));
+    const results = [];
+    for (const islandId of islandIds) {
+      const island = await ctx.db.get(islandId as any);
+      if (!island) continue;
+
+      const members = await ctx.db
+        .query("islandMembers")
+        .withIndex("by_island", (q) => q.eq("islandId", islandId as any))
+        .collect();
+      const agents = await ctx.db
+        .query("agents")
+        .withIndex("by_island", (q) => q.eq("islandId", islandId as any))
+        .collect();
+
+      const agentByPhone = new Map(agents.map((a) => [a.phoneNumber, a]));
+
+      const characters = [];
+      for (const m of members) {
+        const agent = agentByPhone.get(m.phoneNumber) ?? null;
+        let messages: any[] = [];
+        if (agent) {
+          messages = await ctx.db
+            .query("aiMessages")
+            .withIndex("by_agent_sent", (q) => q.eq("agentId", agent._id))
+            .order("desc")
+            .take(limit);
+        }
+        characters.push({ member: m, agent, messages });
+      }
+
+      characters.sort((a, b) => {
+        if (a.member.role !== b.member.role) return a.member.role === "creator" ? -1 : 1;
+        return a.member.phoneNumber < b.member.phoneNumber ? -1 : 1;
+      });
+
+      results.push({ island, characters });
+    }
+    results.sort((a, b) => {
+      const an = (a.island as any).name ?? "";
+      const bn = (b.island as any).name ?? "";
+      return an < bn ? -1 : an > bn ? 1 : 0;
+    });
+    return results;
+  },
+});
+
 // Update agent motivation
 export const updateMotivation = mutation({
   args: {
