@@ -8,11 +8,15 @@ import { LoginPage } from './pages/LoginPage'
 import { SignUpPage } from './pages/SignUpPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { IslandPage } from './pages/IslandPage'
+import { UserProfileSync } from './components/UserProfileSync'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <SignedIn>{children}</SignedIn>
+      <SignedIn>
+        <UserProfileSync />
+        {children}
+      </SignedIn>
       <SignedOut>
         <RedirectToSignIn />
       </SignedOut>

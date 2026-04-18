@@ -121,6 +121,30 @@ const prettyAddress = (raw: string) => {
   return raw
 }
 
+const titleCase = (value: string) =>
+  value
+    .split(' ')
+    .filter(Boolean)
+    .map((tok) => tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase())
+    .join(' ')
+
+// Mirrors IslandPage.participantDisplayName — used when Clerk's displayName
+// hasn't been synced yet for a given participant.
+const derivedNameFromIdentifier = (identifier: string, index: number): string => {
+  if (!identifier) return `Player ${index + 1}`
+  if (identifier.includes('@')) {
+    const local = identifier.split('@')[0]?.replace(/[._-]+/g, ' ').trim() ?? ''
+    if (local) return titleCase(local)
+  }
+  const digits = identifier.replace(/\D/g, '')
+  if (digits.length >= 4) return `Player ${digits.slice(-4)}`
+  return `Player ${index + 1}`
+}
+
+const resolveName = (m: MemberInfo, index: number): string =>
+  (m.displayName && m.displayName.trim()) ||
+  derivedNameFromIdentifier(m.phoneNumber, index)
+
 /* ── Character trait generator ─────────────────────────
    Mirrors the palette used by Agent3D.tsx so every agent on the /agents
    page shows the same chibi character it would render as on the island.
@@ -251,6 +275,7 @@ type MemberInfo = {
   phoneNumber: string
   role: 'creator' | 'member'
   joinedAt: number
+  displayName?: string | null
 }
 type MessageInfo = {
   _id: string
@@ -269,12 +294,205 @@ type IslandBundle = {
   characters: Character[]
 }
 
+/* ── Reasoning logs modal ─────────────────────────────── */
+const ReasoningModal = ({
+  name, character, island, onClose,
+}: {
+  name: string
+  character: Character
+  island: IslandInfo
+  onClose: () => void
+}) => {
+  const { member, agent, messages } = character
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 50,
+        background: 'rgba(14,28,45,0.55)',
+        backdropFilter: 'blur(3px)',
+        display: 'grid', placeItems: 'center',
+        padding: '20px',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(720px, 94vw)',
+          maxHeight: '86vh',
+          display: 'flex', flexDirection: 'column',
+          background: 'linear-gradient(180deg, #fffdf8 0%, #f5ecd8 100%)',
+          border: `2px solid ${C.cardBorder}`,
+          borderRadius: '22px',
+          boxShadow: '0 30px 60px -24px rgba(14,28,45,0.6)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: '10px',
+          padding: '14px 18px',
+          background: `linear-gradient(160deg, ${C.navy} 0%, ${C.navy2} 100%)`,
+          color: '#f6fbff',
+        }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', minWidth: 0 }}>
+            <ChibiAvatar phone={member.phoneNumber} size={48} />
+            <div style={{ minWidth: 0 }}>
+              <p style={{ ...nunito(800, 10), color: '#a8bfd6', margin: 0, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                Reasoning logs
+              </p>
+              <p style={{ ...fredoka(22), margin: '2px 0 0', color: '#f6fbff', lineHeight: 1.1 }}>
+                {name}
+              </p>
+              <p style={{ ...nunito(700, 12), color: '#c5d9ea', margin: '2px 0 0' }}>
+                {island.name} · {prettyAddress(member.phoneNumber)}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              background: 'rgba(255,255,255,0.14)',
+              border: '2px solid rgba(255,255,255,0.25)',
+              color: '#f6fbff',
+              borderRadius: '12px',
+              width: '36px', height: '36px',
+              cursor: 'pointer',
+              ...nunito(900, 16),
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ overflow: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Scaffolded explainer */}
+          <div style={{
+            background: '#fffaf0',
+            border: `1.5px solid ${C.cardBorder}`,
+            borderRadius: '14px',
+            padding: '12px 14px',
+          }}>
+            <p style={{ ...nunito(900, 10), color: C.textLabel, textTransform: 'uppercase', letterSpacing: '0.09em', margin: 0 }}>
+              How this view works
+            </p>
+            <p style={{ ...nunito(700, 13), color: C.text, margin: '4px 0 0', lineHeight: 1.45 }}>
+              Each entry below is a message this agent has sent. Once we persist the
+              K2 <code>&lt;think&gt;</code> blocks into <code>aiMessages.context</code>,
+              the full chain-of-thought will render here.
+            </p>
+          </div>
+
+          {!agent ? (
+            <div style={{
+              textAlign: 'center', padding: '32px 20px',
+              border: '1.5px dashed #d9c8a8',
+              borderRadius: '14px',
+              background: '#fffdf5',
+            }}>
+              <div style={{ fontSize: '40px', marginBottom: '8px' }}>🪴</div>
+              <p style={{ ...fredoka(18), margin: 0, color: C.navy }}>Agent not spawned yet</p>
+              <p style={{ ...nunito(700, 13), color: C.textMuted, margin: '6px 0 0' }}>
+                A K2 personality spawns the first time this player adds a goal.
+              </p>
+            </div>
+          ) : messages.length === 0 ? (
+            <div style={{
+              textAlign: 'center', padding: '32px 20px',
+              border: '1.5px dashed #d9c8a8',
+              borderRadius: '14px',
+              background: '#fffdf5',
+            }}>
+              <div style={{ fontSize: '40px', marginBottom: '8px' }}>💭</div>
+              <p style={{ ...fredoka(18), margin: 0, color: C.navy }}>No traces yet</p>
+              <p style={{ ...nunito(700, 13), color: C.textMuted, margin: '6px 0 0' }}>
+                Reasoning logs will appear once this agent starts sending messages.
+              </p>
+            </div>
+          ) : (
+            messages.map((m, idx) => {
+              const ctxPreview = m.context
+                ? (typeof m.context === 'string' ? m.context : JSON.stringify(m.context, null, 2))
+                : null
+              return (
+                <div key={m._id} style={{
+                  background: m.channel === 'imessage_group' ? '#f1f7ff' : '#fff',
+                  border: `1.5px solid ${m.channel === 'imessage_group' ? '#c9dcef' : '#e6d8bb'}`,
+                  borderRadius: '14px',
+                  padding: '12px 14px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <span style={{
+                      ...nunito(900, 10),
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.09em',
+                      color: m.channel === 'imessage_group' ? '#31557d' : '#8a6a33',
+                    }}>
+                      Step {messages.length - idx} · {m.channel === 'imessage_group' ? 'Group chat' : 'DM'}
+                    </span>
+                    <span style={{ ...nunito(700, 11), color: C.textMuted }}>{formatWhen(m.sentAt)}</span>
+                  </div>
+                  <p style={{ ...nunito(800, 10), color: C.textLabel, margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+                    Output
+                  </p>
+                  <p style={{ ...nunito(700, 13), color: C.text, margin: 0, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                    {m.content}
+                  </p>
+                  <p style={{ ...nunito(800, 10), color: C.textLabel, margin: '10px 0 2px', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+                    Reasoning
+                  </p>
+                  {ctxPreview ? (
+                    <pre style={{
+                      ...nunito(600, 11),
+                      color: '#3a4a63',
+                      background: '#f6f0e1',
+                      border: '1px solid #e4d5b3',
+                      borderRadius: '10px',
+                      padding: '8px 10px',
+                      margin: 0,
+                      maxHeight: '220px',
+                      overflow: 'auto',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}>
+                      {ctxPreview}
+                    </pre>
+                  ) : (
+                    <p style={{
+                      ...nunito(600, 12), fontStyle: 'italic', color: C.textMuted, margin: 0,
+                      padding: '8px 10px',
+                      background: '#faf5e6', border: '1px dashed #e4d5b3', borderRadius: '10px',
+                    }}>
+                      No reasoning trace captured for this message yet.
+                    </p>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── Per-character card ───────────────────────────────── */
-const CharacterCard = ({ island, character }: { island: IslandInfo; character: Character }) => {
+const CharacterCard = ({ island, character, index }: { island: IslandInfo; character: Character; index: number }) => {
   const { member, agent, messages } = character
   const tone = agent ? motivationTone(agent.motivation) : motivationTone(0)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [showReasoning, setShowReasoning] = useState(false)
   const spawned = agent !== null
+  const name = resolveName(member, index)
 
   return (
     <div style={{
@@ -309,11 +527,30 @@ const CharacterCard = ({ island, character }: { island: IslandInfo; character: C
             <p style={{ ...nunito(900, 10), color: C.textLabel, textTransform: 'uppercase', letterSpacing: '0.09em', margin: 0 }}>
               {member.role === 'creator' ? 'Creator' : 'Member'} · Lv {island.islandLevel}
             </p>
-            <p style={{ ...fredoka(20), margin: '3px 0 0', color: C.navy, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {prettyAddress(member.phoneNumber)}
-            </p>
+            <button
+              onClick={() => setShowReasoning(true)}
+              title="View reasoning logs"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
+                margin: '3px 0 0',
+                cursor: 'pointer',
+                textAlign: 'left',
+                display: 'block',
+                maxWidth: '100%',
+                ...fredoka(20),
+                color: C.navy,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                textDecoration: 'underline',
+                textDecorationColor: 'rgba(29,52,81,0.25)',
+                textUnderlineOffset: '3px',
+              }}
+            >
+              {name}
+            </button>
             <p style={{ ...nunito(700, 11), color: C.textMuted, margin: '2px 0 0' }}>
-              Character on {island.name}
+              {prettyAddress(member.phoneNumber)} · {island.name}
             </p>
           </div>
         </div>
@@ -518,16 +755,33 @@ const CharacterCard = ({ island, character }: { island: IslandInfo; character: C
           </div>
         )}
 
-            <p style={{
-              ...nunito(600, 11),
-              color: C.textMuted,
-              fontStyle: 'italic',
-              margin: '8px 0 0',
-            }}>
-              Reasoning traces will populate here once we persist K2 <code>&lt;think&gt;</code> blocks.
-            </p>
+            <button
+              onClick={() => setShowReasoning(true)}
+              style={{
+                ...nunito(900, 12),
+                color: C.navy,
+                background: '#ffffff',
+                border: '2px solid #d4e5ef',
+                borderRadius: '12px',
+                padding: '8px 12px',
+                marginTop: '10px',
+                cursor: 'pointer',
+                alignSelf: 'flex-start',
+                boxShadow: '0 6px 12px -10px rgba(29,52,81,0.42)',
+              }}
+            >
+              🧠 View reasoning logs
+            </button>
           </div>
         </>
+      )}
+      {showReasoning && (
+        <ReasoningModal
+          name={name}
+          character={character}
+          island={island}
+          onClose={() => setShowReasoning(false)}
+        />
       )}
     </div>
   )
@@ -566,9 +820,9 @@ export function AgentsPage() {
   const characterOptions = useMemo(() => {
     const pool = (bundles ?? []).filter((b) => islandFilter === 'all' || b.island._id === islandFilter)
     return pool.flatMap((b) =>
-      b.characters.map((c) => ({
+      b.characters.map((c, idx) => ({
         id: c.member._id,
-        label: `${prettyAddress(c.member.phoneNumber)} · ${b.island.name}`,
+        label: `${resolveName(c.member, idx)} · ${b.island.name}`,
       }))
     )
   }, [bundles, islandFilter])
@@ -757,8 +1011,8 @@ export function AgentsPage() {
                   gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
                   gap: '14px',
                 }}>
-                  {b.characters.map((c) => (
-                    <CharacterCard key={c.member._id} island={b.island} character={c} />
+                  {b.characters.map((c, idx) => (
+                    <CharacterCard key={c.member._id} island={b.island} character={c} index={idx} />
                   ))}
                 </div>
               </section>

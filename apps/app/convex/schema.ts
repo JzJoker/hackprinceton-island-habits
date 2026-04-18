@@ -18,6 +18,10 @@ export default defineSchema({
     phoneNumbers: v.array(v.string()),
     createdAt: v.number(),
     ascendedAt: v.optional(v.number()),
+    dayCount: v.optional(v.number()),
+    lastBuildTickAt: v.optional(v.number()),
+    lastCheckInDate: v.optional(v.string()),
+    streakDays: v.optional(v.number()),
   }).index("by_code", ["code"]),
 
   islandMembers: defineTable({
@@ -111,6 +115,15 @@ export default defineSchema({
   })
     .index("by_agent", ["agentId"])
     .index("by_agent_sent", ["agentId", "sentAt"]),
+
+  users: defineTable({
+    phoneNumber: v.optional(v.string()),
+    email: v.optional(v.string()),
+    displayName: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_phone", ["phoneNumber"])
+    .index("by_email", ["email"]),
 
   gossipConversations: defineTable({
     islandId: v.id("islands"),

@@ -94,6 +94,16 @@ export const getAgentDirectoryForUser = query({
 
       const agentByPhone = new Map(agents.map((a) => [a.phoneNumber, a]));
 
+      const nameByPhone = new Map<string, string>();
+      for (const m of members) {
+        if (!m.phoneNumber) continue;
+        const userRow = await ctx.db
+          .query("users")
+          .withIndex("by_phone", (q) => q.eq("phoneNumber", m.phoneNumber))
+          .first();
+        if (userRow?.displayName) nameByPhone.set(m.phoneNumber, userRow.displayName);
+      }
+
       const characters = [];
       for (const m of members) {
         const agent = agentByPhone.get(m.phoneNumber) ?? null;
@@ -105,7 +115,8 @@ export const getAgentDirectoryForUser = query({
             .order("desc")
             .take(limit);
         }
-        characters.push({ member: m, agent, messages });
+        const displayName = nameByPhone.get(m.phoneNumber) ?? null;
+        characters.push({ member: { ...m, displayName }, agent, messages });
       }
 
       characters.sort((a, b) => {

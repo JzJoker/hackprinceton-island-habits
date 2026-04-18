@@ -22,7 +22,8 @@
     "demo:ascension": "tsx scripts/demo-ascension.ts",
     "demo:monument": "tsx scripts/demo-monument.ts",
     "photon:enhanced": "tsx scripts/test-photon-enhanced.ts",
-    "photon:enhanced:dry": "tsx scripts/test-photon-enhanced.ts --dry"
+    "photon:enhanced:dry": "tsx scripts/test-photon-enhanced.ts --dry",
+    "backfill": "tsx scripts/backfillNames.ts"
   },
   "dependencies": {
     "@photon-ai/advanced-imessage": "^0.4.2",

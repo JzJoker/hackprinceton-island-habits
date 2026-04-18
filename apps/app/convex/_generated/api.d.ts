@@ -15,6 +15,7 @@ import type * as gossip from "../gossip.js";
 import type * as islands from "../islands.js";
 import type * as jobMutations from "../jobMutations.js";
 import type * as jobQueries from "../jobQueries.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   islands: typeof islands;
   jobMutations: typeof jobMutations;
   jobQueries: typeof jobQueries;
+  users: typeof users;
 }>;
 
 /**
