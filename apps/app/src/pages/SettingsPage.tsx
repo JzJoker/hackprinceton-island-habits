@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useUser, useClerk } from '@clerk/clerk-react'
 import KnotapiJS from 'knotapi-js'
 
-const AMAZON_MERCHANT_ID = 44
+const MERCHANT_ID = 19
 const KnotCtor =
   (KnotapiJS as { default?: new () => { open: (options: unknown) => void } })
     .default ??
@@ -49,14 +49,28 @@ export function SettingsPage() {
         clientId: knotClientId,
         environment: knotEnvironment,
         entryPoint: 'settings',
-        customerName: user?.id ?? 'unknown',
-        merchantIds: [AMAZON_MERCHANT_ID],
+        merchantIds: [MERCHANT_ID],
+        useCategories: false,
+        useSearch: false,
         onSuccess: (details: unknown) => {
           setMerchantConnected(true)
           console.log('onSuccess', details)
         },
-        onError: (knotError: unknown) => {
-          console.log('onError', knotError)
+        onError: (errorCode: string, errorDescription: string) => {
+          console.error('onError', errorCode, errorDescription)
+          setError(`${errorCode}: ${errorDescription}`)
+        },
+        onEvent: (
+          event: string,
+          merchant: string,
+          merchantId: number,
+          payload: unknown,
+          taskId: string,
+        ) => {
+          console.log('onEvent', event, merchant, merchantId, payload, taskId)
+          if (event === 'AUTHENTICATED') {
+            setMerchantConnected(true)
+          }
         },
         onExit: () => {
           console.log('onExit')
