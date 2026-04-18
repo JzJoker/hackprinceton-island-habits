@@ -10,6 +10,7 @@
 
 import type * as agents from "../agents.js";
 import type * as buildings from "../buildings.js";
+import type * as dev from "../dev.js";
 import type * as goals from "../goals.js";
 import type * as gossip from "../gossip.js";
 import type * as islands from "../islands.js";
@@ -25,6 +26,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   agents: typeof agents;
   buildings: typeof buildings;
+  dev: typeof dev;
   goals: typeof goals;
   gossip: typeof gossip;
   islands: typeof islands;

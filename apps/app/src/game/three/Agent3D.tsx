@@ -14,6 +14,7 @@ interface Props {
   isSelected: boolean;
   islandRadius?: number;
   onPositionUpdate?: (pos: THREE.Vector3) => void;
+  timeOffsetMs?: number;
   gossipText?: string | null;
   gossipFrozenFacingPos?: THREE.Vector3 | null;
   gossipApproachTarget?: THREE.Vector3 | null;
@@ -31,7 +32,20 @@ const hashAgentId = (input: string): number => {
 const smoothStep = (t: number) => t * t * (3 - 2 * t);
 
 /* ── Chibi-style cozy villager agent ──────────────────── */
-export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelected, islandRadius = 7.0, onPositionUpdate, gossipText, gossipFrozenFacingPos, gossipApproachTarget }: Props) => {
+export const Agent3D = ({
+  agent,
+  waypoints,
+  buildings,
+  scenery,
+  onClick,
+  isSelected,
+  islandRadius = 7.0,
+  onPositionUpdate,
+  timeOffsetMs = 0,
+  gossipText,
+  gossipFrozenFacingPos,
+  gossipApproachTarget,
+}: Props) => {
   const group = useRef<THREE.Group>(null);
   const bodyGroup = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Mesh>(null);
@@ -70,6 +84,7 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
 
   useFrame((_state, delta) => {
     if (!group.current) return;
+    const nowMs = Date.now() + timeOffsetMs;
 
     // ── Gossip freeze mode: stop movement, face partner ──
     if (gossipFrozenFacingPos) {
@@ -84,7 +99,7 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
       if (rightLeg.current) rightLeg.current.rotation.x = 0;
       if (leftArm.current) { leftArm.current.rotation.x = 0; leftArm.current.rotation.z = 0; }
       if (rightArm.current) { rightArm.current.rotation.x = 0; rightArm.current.rotation.z = 0; }
-      if (bodyGroup.current) { bodyGroup.current.position.y = Math.sin(Date.now() * 0.002) * 0.008; bodyGroup.current.rotation.z = 0; }
+      if (bodyGroup.current) { bodyGroup.current.position.y = Math.sin(nowMs * 0.002) * 0.008; bodyGroup.current.rotation.z = 0; }
       return;
     }
 
@@ -108,7 +123,7 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
       // ── Normal mode: follow deterministic waypoint route ──
       const route = orderedWaypoints.length > 0 ? orderedWaypoints : [agent.home];
       const routeLen = route.length;
-      const worldTime = Date.now() / 1000;
+      const worldTime = nowMs / 1000;
       const scenicPhase = sceneryCountRef.current * 0.001;
       const travel = worldTime * pace + seed * routeLen + scenicPhase;
       const seg = ((travel % routeLen) + routeLen) % routeLen;
@@ -167,7 +182,7 @@ export const Agent3D = ({ agent, waypoints, buildings, scenery, onClick, isSelec
     const swing = walking ? Math.sin(t) * 0.45 : 0;
     const bounce = (walking || nearConstruction)
       ? Math.abs(Math.sin(t * 2)) * 0.035
-      : Math.sin(Date.now() * 0.002) * 0.008;
+      : Math.sin(nowMs * 0.002) * 0.008;
 
     if (leftLeg.current) leftLeg.current.rotation.x = nearConstruction ? 0 : swing;
     if (rightLeg.current) rightLeg.current.rotation.x = nearConstruction ? 0 : -swing;

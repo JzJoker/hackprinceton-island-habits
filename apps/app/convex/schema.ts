@@ -10,6 +10,10 @@ export default defineSchema({
     islandLevel: v.number(),
     xp: v.number(),
     currency: v.number(),
+    streakDays: v.optional(v.number()),
+    dayCount: v.optional(v.number()),
+    lastCheckInDate: v.optional(v.string()),
+    lastBuildTickAt: v.optional(v.number()),
     difficulty: v.union(v.literal("easy"), v.literal("normal"), v.literal("hard")),
     gridSize: v.object({
       width: v.number(),

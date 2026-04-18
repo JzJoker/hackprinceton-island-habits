@@ -170,6 +170,12 @@ export interface ChatMsg { from: "agent" | "you"; text: string; ts: number; }
 // ── Decoration scenery (trees/rocks/flowers) — used for placement scoring ──
 export interface Scenery { id: string; type: "tree" | "rock" | "flower"; pos: [number, number]; district: DistrictId; variant: number; }
 
+type ConvexSyncPatch = Partial<
+  Pick<GameState, "level" | "xp" | "coins" | "streak" | "dayCount" | "agents" | "buildings" | "goals">
+> & {
+  serverNowMs?: number;
+};
+
 interface GameState {
   screen: ScreenId;
   setScreen: (s: ScreenId) => void;
@@ -177,6 +183,7 @@ interface GameState {
   setSelectedAgent: (id: AgentId) => void;
   coins: number;
   streak: number;
+  dayCount: number;
   level: number;
   xp: number;
   agents: Agent[];
@@ -216,9 +223,10 @@ interface GameState {
   islandName: string;
   islandId: string | null;
   phoneNumber: string | null;
+  timeOffsetMs: number;
   trackAgent: boolean;
   setTrackAgent: (v: boolean) => void;
-  syncFromConvex: (patch: Partial<Pick<GameState, "level" | "xp" | "coins" | "agents" | "buildings" | "goals">>) => void;
+  syncFromConvex: (patch: ConvexSyncPatch) => void;
 
   // Dev controls (desktop only)
   devNextDay: () => void;       // ☀️✓ good day — all goals done, mood up
@@ -238,13 +246,18 @@ export interface GameBootstrapData {
   phoneNumber?: string;
   coins?: number;
   streak?: number;
+  dayCount?: number;
   level?: number;
   xp?: number;
   agents?: Agent[];
   goals?: Goal[];
   buildings?: Building[];
+  serverNowMs?: number;
   onBuildingPlaced?: (type: string, x: number, y: number, cost: number, days: number) => void | Promise<unknown>;
   onGoalCompleted?: (goalId: string) => void | Promise<void>;
+  onDevNextDay?: () => void | Promise<void>;
+  onDevNextDayBad?: () => void | Promise<void>;
+  onDevLevelUp?: () => void | Promise<void>;
 }
 
 const Ctx = createContext<GameState | null>(null);
@@ -379,15 +392,22 @@ export const GameProvider = ({
   const seededGoals = initialData?.goals?.length ? initialData.goals : initialGoals;
   const onBuildingPlacedRef = useRef(initialData?.onBuildingPlaced);
   const onGoalCompletedRef = useRef(initialData?.onGoalCompleted);
+  const onDevNextDayRef = useRef(initialData?.onDevNextDay);
+  const onDevNextDayBadRef = useRef(initialData?.onDevNextDayBad);
+  const onDevLevelUpRef = useRef(initialData?.onDevLevelUp);
 
   const [screen, setScreen] = useState<ScreenId>(null);
   const [selectedAgent, setSelectedAgent] = useState<AgentId>(seededAgents[0]?.id ?? "sofia");
   const [coins, setCoins] = useState(initialData?.coins ?? 300);
   const [streak, setStreak] = useState(initialData?.streak ?? 0);
+  const [dayCount, setDayCount] = useState(initialData?.dayCount ?? 1);
   const [level, setLevel] = useState(initialData?.level ?? 1);
   const [xp, setXp] = useState(initialData?.xp ?? 0);
   const [islandId] = useState<string | null>(initialData?.islandId ?? null);
   const [phoneNumber] = useState<string | null>(initialData?.phoneNumber ?? null);
+  const [timeOffsetMs, setTimeOffsetMs] = useState<number>(
+    initialData?.serverNowMs ? initialData.serverNowMs - Date.now() : 0
+  );
   const [agents, setAgents] = useState<Agent[]>(seededAgents);
   const [buildings, setBuildings] = useState<Building[]>(initialData?.buildings ?? initialBuildings);
   const [scenery] = useState<Scenery[]>(initialScenery);
@@ -411,24 +431,41 @@ export const GameProvider = ({
     setTimeout(() => setToast(null), 2400);
   }, []);
 
-  const syncFromConvex = useCallback((patch: Partial<Pick<GameState, "level" | "xp" | "coins" | "agents" | "buildings" | "goals">>) => {
+  const syncFromConvex = useCallback((patch: ConvexSyncPatch) => {
     if (patch.level !== undefined) setLevel(patch.level);
     if (patch.xp !== undefined) setXp(patch.xp);
     if (patch.coins !== undefined) setCoins(patch.coins);
-    if (patch.agents !== undefined) setAgents(prev => prev.map(agent => {
-      const fresh = patch.agents!.find(x => x.id === agent.id);
-      return fresh ? { ...agent, mood: fresh.mood } : agent;
-    }));
-    if (patch.buildings !== undefined) setBuildings(prev =>
-      patch.buildings!.map(incoming => {
-        const local = prev.find(b => b.id === incoming.id);
-        return local
-          ? { ...incoming, buildProgress: Math.max(local.buildProgress, incoming.buildProgress) }
-          : incoming;
-      })
-    );
+    if (patch.streak !== undefined) setStreak(patch.streak);
+    if (patch.dayCount !== undefined) setDayCount(patch.dayCount);
+    if (patch.serverNowMs !== undefined) {
+      setTimeOffsetMs(patch.serverNowMs - Date.now());
+    }
+    if (patch.agents !== undefined) {
+      setAgents((prev) => {
+        const prevById = new Map(prev.map((agent) => [agent.id, agent]));
+        return patch.agents!.map((incoming) => ({
+          ...(prevById.get(incoming.id) ?? incoming),
+          ...incoming,
+        }));
+      });
+    }
+    if (patch.buildings !== undefined) {
+      if (islandId) {
+        // In Convex mode, server is authoritative for placement and progress.
+        setBuildings(patch.buildings);
+      } else {
+        setBuildings((prev) =>
+          patch.buildings!.map((incoming) => {
+            const local = prev.find((b) => b.id === incoming.id);
+            return local
+              ? { ...incoming, buildProgress: Math.max(local.buildProgress, incoming.buildProgress) }
+              : incoming;
+          }),
+        );
+      }
+    }
     if (patch.goals !== undefined) setGoals(patch.goals);
-  }, []);
+  }, [islandId]);
 
   const graduateIsland = useCallback(() => {
     const next = ISLAND_TIERS[islandEra + 1];
@@ -521,6 +558,9 @@ export const GameProvider = ({
   // Formula: motFactor = max(0, (avgMood - 20) / 80) × onlineFraction
   //          progressPerSec = motFactor / (buildTime × 30)
   const tickBuildings = useCallback((delta: number) => {
+    if (islandId) {
+      return;
+    }
     setBuildings(bs => {
       const hasUnfinished = bs.some(b => b.buildProgress < 1);
       if (!hasUnfinished) return bs;
@@ -546,8 +586,23 @@ export const GameProvider = ({
   // Dev controls
   // ☀️✓ Good day: all goals get done → mood boost, streak up, coins earned
   const devNextDay = useCallback(() => {
+    if (islandId && onDevNextDayRef.current) {
+      showToast("Syncing good day...");
+      Promise.resolve(onDevNextDayRef.current())
+        .then(() => showToast("☀️ Great day synced"))
+        .catch((err) => {
+          console.error("Failed to sync good day", err);
+          showToast(err instanceof Error ? err.message : "Failed to sync good day");
+        });
+      return;
+    }
+    if (islandId) {
+      showToast("Good day action is unavailable in synced mode.");
+      return;
+    }
     setGoals(gs => gs.map(g => ({ ...g, done: true })));
     setStreak(s => s + 1);
+    setDayCount((d) => d + 1);
     setCoins(c => c + 50);
     setAgents(as => as.map(a => a.isYou ? { ...a, mood: Math.min(100, a.mood + 8) } : a));
     showToast("☀️ Great day! All goals done · mood +8 · +50 coins");
@@ -557,17 +612,46 @@ export const GameProvider = ({
 
   // ☀️✗ Bad day: goals not done → mood drops, streak breaks
   const devNextDayBad = useCallback(() => {
+    if (islandId && onDevNextDayBadRef.current) {
+      showToast("Syncing bad day...");
+      Promise.resolve(onDevNextDayBadRef.current())
+        .then(() => showToast("😞 Bad day synced"))
+        .catch((err) => {
+          console.error("Failed to sync bad day", err);
+          showToast(err instanceof Error ? err.message : "Failed to sync bad day");
+        });
+      return;
+    }
+    if (islandId) {
+      showToast("Bad day action is unavailable in synced mode.");
+      return;
+    }
     setGoals(gs => gs.map(g => ({ ...g, done: false }))); // stays incomplete
     setStreak(0); // streak breaks
+    setDayCount((d) => d + 1);
     setAgents(as => as.map(a => a.isYou ? { ...a, mood: Math.max(10, a.mood - 15) } : a));
     showToast("😞 Missed goals · mood −15 · streak lost");
   }, [showToast]);
 
   const devLevelUp = useCallback(() => {
+    if (islandId && onDevLevelUpRef.current) {
+      showToast("Syncing level up...");
+      Promise.resolve(onDevLevelUpRef.current())
+        .then(() => showToast("⚡ Level up synced"))
+        .catch((err) => {
+          console.error("Failed to sync level up", err);
+          showToast(err instanceof Error ? err.message : "Failed to sync level up");
+        });
+      return;
+    }
+    if (islandId) {
+      showToast("Level up action is unavailable in synced mode.");
+      return;
+    }
     setLevel(l => l + 1);
     setXp(0);
     showToast("⚡ Level up!");
-  }, [showToast]);
+  }, [islandId, showToast]);
 
   const completeGoal = useCallback((id: string) => {
     const goalToComplete = goals.find((goal) => goal.id === id);
@@ -642,7 +726,7 @@ export const GameProvider = ({
     <Ctx.Provider value={{
       screen, setScreen,
       selectedAgent, setSelectedAgent,
-      coins, streak, level, xp,
+      coins, streak, dayCount, level, xp,
       agents, buildings, scenery, goals,
       islandEra, islandHistory, isTransitioning, graduateIsland, canGraduate,
       viewingEra, setViewingEra, isVisiting, visitIsland,
@@ -653,6 +737,7 @@ export const GameProvider = ({
       islandName,
       islandId,
       phoneNumber,
+      timeOffsetMs,
       trackAgent, setTrackAgent,
       syncFromConvex,
       devNextDay, devNextDayBad, devLevelUp,

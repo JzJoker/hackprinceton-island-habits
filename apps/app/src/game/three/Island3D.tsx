@@ -450,7 +450,18 @@ const Scene = ({
   agentTrackPos: MutableRefObject<THREE.Vector3>;
   saveConversation: SaveConversationFn;
 }) => {
-  const { agents, buildings, scenery, selectedAgent, setSelectedAgent, placingType, islandEra, viewingEra, islandHistory } = useGame();
+  const {
+    agents,
+    buildings,
+    scenery,
+    selectedAgent,
+    setSelectedAgent,
+    placingType,
+    islandEra,
+    viewingEra,
+    islandHistory,
+    timeOffsetMs,
+  } = useGame();
   const agentPositions = useRef(new Map<string, THREE.Vector3>());
   const [activeConv, setActiveConv] = useState<ActiveConv | null>(null);
   const [gossipBubbles, setGossipBubbles] = useState<Map<string, string>>(new Map());
@@ -568,6 +579,7 @@ const Scene = ({
             }
             if (a.isYou) agentTrackPos.current.copy(p);
           }}
+          timeOffsetMs={timeOffsetMs}
           gossipText={gossipBubbles.get(a.id) ?? null}
           gossipFrozenFacingPos={
             activeConv?.agentAId === a.id ? activeConv.agentBPosCapture :
@@ -602,6 +614,7 @@ const Scene = ({
 export const Island3D = () => {
   const game = useContext(GameCtx);
   const trackAgent = game?.trackAgent ?? false;
+  const timeOffsetMs = game?.timeOffsetMs ?? 0;
   const agentTrackPos = useRef(new THREE.Vector3());
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const islandId = game?.islandId ?? null;
@@ -614,10 +627,10 @@ export const Island3D = () => {
         agentAPhone,
         agentBPhone,
         lines,
-        timestamp: Date.now(),
+        timestamp: Date.now() + timeOffsetMs,
       }).catch(console.error);
     },
-    [islandId, saveConversationMut],
+    [islandId, saveConversationMut, timeOffsetMs],
   );
 
   return (

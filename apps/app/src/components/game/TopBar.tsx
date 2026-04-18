@@ -8,13 +8,13 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export const TopBar = () => {
   const navigate = useNavigate();
-  const { coins, streak, level, xp, agents, screen, setScreen, islandName } = useGame();
+  const { coins, streak, dayCount, level, xp, agents, screen, setScreen, islandName } = useGame();
   const isMobile = useIsMobile();
   const onlineCount = agents.filter((a) => a.online).length;
 
-  // Dynamic date — day number from streak, real day-of-week, season from month
+  // Dynamic date — day number from shared island day counter.
   const now = new Date();
-  const dayLabel = `Day ${streak + 1}`;
+  const dayLabel = `Day ${Math.max(1, dayCount)}`;
   const dayOfWeek = DAYS[now.getDay()];
   const season = SEASONS[now.getMonth()];
 

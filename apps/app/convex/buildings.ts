@@ -15,13 +15,26 @@ export const tickBuildProgress = mutation({
   handler: async (ctx, { islandId, motivationFactor }) => {
     const INTERVAL_SECS = 5;
     const GAME_DAY_SECS = 120;
+    const now = Date.now();
+    const island = await ctx.db.get(islandId);
+    if (!island) throw new Error("Island not found");
+
+    // Prevent multi-tab clients from accelerating build progression.
+    const minIntervalMs = INTERVAL_SECS * 1000 - 250;
+    const lastTickAt = island.lastBuildTickAt ?? 0;
+    if (now - lastTickAt < minIntervalMs) {
+      return;
+    }
+    await ctx.db.patch(islandId, { lastBuildTickAt: now });
+
+    const normalizedMotivation = Math.max(0, Math.min(1, motivationFactor));
     const buildings = await ctx.db
       .query("buildings")
       .withIndex("by_island", (q) => q.eq("islandId", islandId))
       .filter((q) => q.neq(q.field("state"), "complete"))
       .collect();
     for (const b of buildings) {
-      const rate = motivationFactor / (Math.max(1, b.buildTimeDays) * GAME_DAY_SECS);
+      const rate = normalizedMotivation / (Math.max(1, b.buildTimeDays) * GAME_DAY_SECS);
       const newProgress = Math.min(1, b.buildProgress + rate * INTERVAL_SECS);
       const isComplete = newProgress >= 1;
       await ctx.db.patch(b._id, {
