@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { useConvex, useMutation, useQuery } from 'convex/react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
-import type { Id } from '../../convex/_generated/dataModel'
+import { Canvas } from '@react-three/fiber'
+import type { Doc, Id } from '../../convex/_generated/dataModel'
 import { api } from '../../convex/_generated/api'
 import { usePhoneNumber } from '../hooks/usePhoneNumber'
 
@@ -147,41 +148,213 @@ const seededFrom = (text: string) => {
   }
 }
 
+const hashOf = (text: string) => {
+  let seed = 5381
+  for (let i = 0; i < text.length; i++) {
+    seed = ((seed << 5) + seed + text.charCodeAt(i)) | 0
+  }
+  return seed >>> 0
+}
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+
+type IslandDetails = {
+  island: Doc<'islands'>
+  members: Doc<'islandMembers'>[]
+  agents: Doc<'agents'>[]
+}
+
+type PreviewStructure3D = {
+  id: string
+  x: number
+  z: number
+  type: string
+  state: Doc<'buildings'>['state']
+}
+
+type PreviewAgent3D = {
+  id: string
+  x: number
+  z: number
+  bodyColor: string
+  hairColor: string
+}
+
+type PreviewTree3D = {
+  id: string
+  x: number
+  z: number
+  pine: boolean
+}
+
+const worldFromGrid = (gridX: number, gridY: number, width: number, height: number): [number, number] => {
+  const safeW = Math.max(2, width)
+  const safeH = Math.max(2, height)
+  const nx = gridX / (safeW - 1)
+  const nz = gridY / (safeH - 1)
+  return [(nx - 0.5) * 8.2, (nz - 0.5) * 5.6]
+}
+
+const MiniTree3D = ({ x, z, pine }: { x: number; z: number; pine: boolean }) => (
+  <group position={[x, 0, z]}>
+    <mesh position={[0, 0.34, 0]}>
+      <cylinderGeometry args={[0.06, 0.08, 0.45, 6]} />
+      <meshStandardMaterial color="#7f4e2f" flatShading />
+    </mesh>
+    {pine ? (
+      <>
+        <mesh position={[0, 0.72, 0]}>
+          <coneGeometry args={[0.28, 0.45, 7]} />
+          <meshStandardMaterial color="#2f7f49" flatShading />
+        </mesh>
+        <mesh position={[0, 0.89, 0]}>
+          <coneGeometry args={[0.22, 0.34, 7]} />
+          <meshStandardMaterial color="#2c7444" flatShading />
+        </mesh>
+      </>
+    ) : (
+      <mesh position={[0, 0.74, 0]}>
+        <sphereGeometry args={[0.28, 10, 10]} />
+        <meshStandardMaterial color="#4f9f53" flatShading />
+      </mesh>
+    )}
+  </group>
+)
+
+const MiniStructure3D = ({ structure, index }: { structure: PreviewStructure3D; index: number }) => {
+  const isGarden = structure.type === 'garden' || structure.type === 'zengarden'
+  const muted = structure.state === 'constructing' || structure.state === 'damaged'
+  const roofPalette = ['#c24f3c', '#bf5a41', '#b24a3c', '#c8684c']
+  const roof = roofPalette[index % roofPalette.length]
+  const bodyColor = muted ? '#c9bca9' : '#ead9c2'
+  const opacity = muted ? 0.72 : 1
+
+  if (isGarden) {
+    return (
+      <group position={[structure.x, 0, structure.z]}>
+        <mesh position={[0, 0.17, 0]}>
+          <cylinderGeometry args={[0.28, 0.34, 0.13, 14]} />
+          <meshStandardMaterial color="#6b472d" flatShading opacity={opacity} transparent={muted} />
+        </mesh>
+        {['#e78cac', '#f4c57b', '#d8aef4'].map((c, i) => (
+          <mesh key={`${structure.id}-flower-${i}`} position={[-0.1 + i * 0.1, 0.25, 0.06 - i * 0.02]}>
+            <sphereGeometry args={[0.05, 8, 8]} />
+            <meshStandardMaterial color={c} flatShading />
+          </mesh>
+        ))}
+      </group>
+    )
+  }
+
+  return (
+    <group position={[structure.x, 0, structure.z]}>
+      <mesh position={[0, 0.13, 0]}>
+        <boxGeometry args={[0.74, 0.12, 0.74]} />
+        <meshStandardMaterial color="#958775" flatShading opacity={opacity} transparent={muted} />
+      </mesh>
+      <mesh position={[0, 0.43, 0]}>
+        <boxGeometry args={[0.64, 0.46, 0.64]} />
+        <meshStandardMaterial color={bodyColor} flatShading opacity={opacity} transparent={muted} />
+      </mesh>
+      <mesh position={[0, 0.74, 0]} rotation={[0, Math.PI / 4, 0]}>
+        <coneGeometry args={[0.54, 0.28, 4]} />
+        <meshStandardMaterial color={roof} flatShading opacity={opacity} transparent={muted} />
+      </mesh>
+      <mesh position={[0.18, 0.41, 0.33]}>
+        <boxGeometry args={[0.12, 0.22, 0.04]} />
+        <meshStandardMaterial color="#734c31" flatShading />
+      </mesh>
+    </group>
+  )
+}
+
+const MiniAgent3D = ({ agent }: { agent: PreviewAgent3D }) => (
+  <group position={[agent.x, 0, agent.z]}>
+    <mesh position={[0, 0.22, 0]}>
+      <sphereGeometry args={[0.14, 12, 12]} />
+      <meshStandardMaterial color={agent.bodyColor} flatShading />
+    </mesh>
+    <mesh position={[0, 0.41, 0]}>
+      <sphereGeometry args={[0.11, 12, 12]} />
+      <meshStandardMaterial color="#f3ccae" flatShading />
+    </mesh>
+    <mesh position={[0, 0.45, 0.01]}>
+      <sphereGeometry args={[0.08, 10, 10]} />
+      <meshStandardMaterial color={agent.hairColor} flatShading />
+    </mesh>
+  </group>
+)
+
 const MiniIslandPreview = ({
-  code,
-  playerCount,
-  level,
+  island,
+  details,
+  buildings,
   selected,
 }: {
-  code: string
-  playerCount: number
-  level: number
+  island: Doc<'islands'>
+  details: IslandDetails | undefined
+  buildings: Doc<'buildings'>[] | undefined
   selected: boolean
 }) => {
-  const scene = useMemo<{
-    shrubs: Array<{ x: number; y: number; s: number; o: number }>
-    players: Array<{ x: number; y: number; c: string }>
-    houses: Array<{ x: number; y: number; r: number }>
-  }>(() => {
-    const rand = seededFrom(code)
-    const shrubs = Array.from({ length: 7 }).map(() => ({
-      x: 16 + rand() * 68,
-      y: 50 + rand() * 28,
-      s: 10 + rand() * 16,
-      o: 0.2 + rand() * 0.25,
+  const hasLiveData = !!details && !!buildings
+  const scene = useMemo(() => {
+    const realBuildings = buildings ?? []
+    const grid = island.gridSize ?? { width: 10, height: 10 }
+
+    const structures: PreviewStructure3D[] = realBuildings.slice(0, 9).map((building) => {
+      const [x, z] = worldFromGrid(building.gridX, building.gridY, grid.width, grid.height)
+      return {
+        id: building._id,
+        x,
+        z,
+        type: building.type,
+        state: building.state,
+      }
+    })
+
+    const participants =
+      details?.agents.map((a) => a.phoneNumber) ??
+      details?.members.map((m) => m.phoneNumber) ??
+      island.phoneNumbers
+
+    const fallbackRand = seededFrom(`${island.code}:${island._id}`)
+    if (structures.length === 0) {
+      const fallbackCount = clamp(Math.ceil(((island.islandLevel ?? 0) + 1) / 2), 1, 4)
+      for (let i = 0; i < fallbackCount; i++) {
+        structures.push({
+          id: `${island._id}-fallback-${i}`,
+          x: -2.8 + fallbackRand() * 5.8,
+          z: -1.8 + fallbackRand() * 3.6,
+          type: i % 3 === 0 ? 'garden' : 'house',
+          state: 'complete',
+        })
+      }
+    }
+
+    const agents: PreviewAgent3D[] = participants.slice(0, 6).map((phone, index) => {
+      const seed = hashOf(`${phone}:${island._id}:${index}`)
+      const near = structures[index % structures.length]
+      const x = clamp(near.x + ((((seed >>> 12) % 1000) / 1000) - 0.5) * 1.8, -3.9, 3.9)
+      const z = clamp(near.z + ((((seed >>> 20) % 1000) / 1000) - 0.5) * 1.6 + 0.4, -2.9, 2.9)
+      return {
+        id: `${phone}-${index}`,
+        x,
+        z,
+        bodyColor: `hsl(${seed % 360} 58% 64%)`,
+        hairColor: ['#2a201c', '#513629', '#443126', '#302522', '#6d4b36'][(seed >>> 4) % 5],
+      }
+    })
+
+    const treeRand = seededFrom(`${island.code}:${realBuildings.length}:${participants.length}`)
+    const trees: PreviewTree3D[] = Array.from({ length: 8 }).map((_, index) => ({
+      id: `${island._id}-tree-${index}`,
+      x: -3.8 + treeRand() * 7.6,
+      z: -2.8 + treeRand() * 5.6,
+      pine: treeRand() > 0.45,
     }))
-    const players = Array.from({ length: Math.min(5, Math.max(1, playerCount)) }).map(() => ({
-      x: 20 + rand() * 60,
-      y: 50 + rand() * 24,
-      c: `hsl(${20 + rand() * 280} 64% 73%)`,
-    }))
-    const houses = Array.from({ length: Math.min(4, Math.max(1, Math.ceil(level / 3))) }).map(() => ({
-      x: 20 + rand() * 58,
-      y: 42 + rand() * 22,
-      r: -8 + rand() * 16,
-    }))
-    return { shrubs, players, houses }
-  }, [code, level, playerCount])
+
+    return { structures, agents, trees }
+  }, [buildings, details, island])
 
   return (
     <div style={{
@@ -190,56 +363,49 @@ const MiniIslandPreview = ({
       borderRadius: '18px',
       overflow: 'hidden',
       border: `1.5px solid ${selected ? '#7ca4d1' : '#d3e3f0'}`,
-      background: 'linear-gradient(180deg, #ead7bc 0%, #bde6e8 24%, #9ed3dc 100%)',
-      boxShadow: 'inset 0 -24px 36px -28px rgba(41,88,116,0.35)',
+      background: 'linear-gradient(180deg, #ecd3b2 0%, #b7e2e9 22%, #9fd6e2 100%)',
+      boxShadow: 'inset 0 -26px 38px -30px rgba(36,80,108,0.46)',
     }}>
-      <div style={{
-        position: 'absolute',
-        inset: '56px 12px 8px',
-        borderRadius: '999px',
-        background: 'linear-gradient(180deg, #7bb45c 0%, #6aa653 100%)',
-        border: '2px solid rgba(74,120,59,0.34)',
-      }} />
-      {scene.shrubs.map((s, i) => (
-        <div key={i} style={{
-          position: 'absolute',
-          left: `${s.x}%`,
-          top: `${s.y}%`,
-          width: `${s.s}px`,
-          height: `${s.s * 0.5}px`,
-          borderRadius: '999px',
-          transform: 'translate(-50%, -50%)',
-          background: 'rgba(92,160,74,0.9)',
-          opacity: s.o,
-        }} />
-      ))}
-      {scene.houses.map((h, i) => (
-        <div key={i} style={{
-          position: 'absolute',
-          left: `${h.x}%`,
-          top: `${h.y}%`,
-          width: '14px',
-          height: '10px',
-          borderRadius: '3px',
-          transform: `translate(-50%, -50%) rotate(${h.r}deg)`,
-          background: '#f8ecd9',
-          border: '1px solid rgba(76,84,103,0.22)',
-          boxShadow: '0 2px 0 rgba(41,54,68,0.2)',
-        }} />
-      ))}
-      {scene.players.map((p, i) => (
-        <div key={i} style={{
-          position: 'absolute',
-          left: `${p.x}%`,
-          top: `${p.y}%`,
-          width: '8px',
-          height: '8px',
-          borderRadius: '50%',
-          transform: 'translate(-50%, -50%)',
-          background: p.c,
-          border: '1.5px solid #ffffff',
-        }} />
-      ))}
+      <Canvas
+        dpr={[1, 1.5]}
+        style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
+        gl={{ antialias: true, alpha: true, powerPreference: 'low-power' }}
+        camera={{ position: [7.2, 5.0, 7.0], fov: 34 }}
+      >
+        <color attach="background" args={['#a9dce5']} />
+        <ambientLight intensity={0.9} />
+        <directionalLight position={[5, 8, 4]} intensity={1.1} color="#fff1dc" />
+        <directionalLight position={[-4, 3, -3]} intensity={0.34} color="#9fccff" />
+
+        <group rotation={[0, -0.6, 0]} position={[0, -0.25, 0]}>
+          <mesh position={[0, -0.64, 0]}>
+            <cylinderGeometry args={[6.55, 6.62, 0.54, 48]} />
+            <meshStandardMaterial color="#8fd0de" flatShading />
+          </mesh>
+          <mesh position={[0, -0.25, 0]}>
+            <cylinderGeometry args={[5.56, 5.72, 0.34, 48]} />
+            <meshStandardMaterial color="#d8c6a8" flatShading />
+          </mesh>
+          <mesh position={[0, -0.02, 0]}>
+            <cylinderGeometry args={[5.36, 5.48, 0.24, 48]} />
+            <meshStandardMaterial color="#74ad57" flatShading />
+          </mesh>
+          <mesh position={[0, 0.08, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[5.18, 48]} />
+            <meshStandardMaterial color="#79b35b" flatShading />
+          </mesh>
+
+          {scene.trees.map((tree) => (
+            <MiniTree3D key={tree.id} x={tree.x} z={tree.z} pine={tree.pine} />
+          ))}
+          {scene.structures.map((structure, index) => (
+            <MiniStructure3D key={structure.id} structure={structure} index={index} />
+          ))}
+          {scene.agents.map((agent) => (
+            <MiniAgent3D key={agent.id} agent={agent} />
+          ))}
+        </group>
+      </Canvas>
       <div style={{
         position: 'absolute',
         top: '8px',
@@ -251,9 +417,81 @@ const MiniIslandPreview = ({
         ...nunito(900, 9),
         letterSpacing: '0.06em',
       }}>
-        PREVIEW
+        {hasLiveData ? '3D PREVIEW' : 'SYNCING 3D'}
       </div>
     </div>
+  )
+}
+
+const IslandCard = ({
+  island,
+  selected,
+  onOpen,
+}: {
+  island: Doc<'islands'>
+  selected: boolean
+  onOpen: () => void
+}) => {
+  const details = useQuery(api.islands.getIslandDetails, { islandId: island._id })
+  const buildings = useQuery(api.buildings.getBuildings, { islandId: island._id })
+
+  const playerCount = details?.members.length ?? Math.max(1, island.phoneNumbers?.length ?? 1)
+
+  return (
+    <button
+      onClick={onOpen}
+      style={{
+        background: selected
+          ? 'linear-gradient(160deg, #fef5e8 0%, #f8efe0 100%)'
+          : 'linear-gradient(160deg, #fffdf8 0%, #f8f4ea 100%)',
+        border: `2px solid ${selected ? '#8fb2d9' : C.cardBorder}`,
+        borderRadius: '22px',
+        padding: '10px',
+        textAlign: 'left',
+        cursor: 'pointer',
+        transition: 'all 0.15s',
+        boxShadow: selected
+          ? '0 16px 24px -18px rgba(31,67,101,0.65)'
+          : '0 10px 18px -16px rgba(31,67,101,0.4)',
+      }}
+    >
+      <MiniIslandPreview island={island} details={details} buildings={buildings} selected={selected} />
+      <div style={{ marginTop: '10px', padding: '0 2px 2px' }}>
+        <p style={{ ...nunito(900, 14), color: C.navy, margin: 0 }}>{island.name}</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+          <span style={{
+            borderRadius: '999px',
+            padding: '3px 8px',
+            background: '#eaf2fa',
+            color: '#31557d',
+            ...nunito(800, 11),
+          }}>
+            Lv {island.islandLevel}
+          </span>
+          <span style={{
+            borderRadius: '999px',
+            padding: '3px 8px',
+            background: '#edf8f2',
+            color: '#3a7f56',
+            ...nunito(800, 11),
+          }}>
+            {playerCount} players
+          </span>
+          {selected && (
+            <span style={{
+              borderRadius: '999px',
+              padding: '3px 8px',
+              background: '#203955',
+              color: '#f1f7ff',
+              ...nunito(900, 10),
+              letterSpacing: '0.06em',
+            }}>
+              SELECTED
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
   )
 }
 
@@ -377,68 +615,13 @@ export function DashboardPage() {
           }}>
             {islands.map(island => {
               const selected = island._id === islandId
-              const playerCount = Math.max(1, island.phoneNumbers?.length ?? 1)
               return (
-                <button
+                <IslandCard
                   key={island._id}
-                  onClick={() => navigate(`/island?islandId=${island._id}`)}
-                  style={{
-                    background: selected
-                      ? 'linear-gradient(160deg, #fef5e8 0%, #f8efe0 100%)'
-                      : 'linear-gradient(160deg, #fffdf8 0%, #f8f4ea 100%)',
-                    border: `2px solid ${selected ? '#8fb2d9' : C.cardBorder}`,
-                    borderRadius: '22px',
-                    padding: '10px',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                    boxShadow: selected
-                      ? '0 16px 24px -18px rgba(31,67,101,0.65)'
-                      : '0 10px 18px -16px rgba(31,67,101,0.4)',
-                  }}
-                >
-                  <MiniIslandPreview
-                    code={island.code}
-                    playerCount={playerCount}
-                    level={island.islandLevel ?? 0}
-                    selected={selected}
-                  />
-                  <div style={{ marginTop: '10px', padding: '0 2px 2px' }}>
-                    <p style={{ ...nunito(900, 14), color: C.navy, margin: 0 }}>{island.name}</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                      <span style={{
-                        borderRadius: '999px',
-                        padding: '3px 8px',
-                        background: '#eaf2fa',
-                        color: '#31557d',
-                        ...nunito(800, 11),
-                      }}>
-                        Lv {island.islandLevel}
-                      </span>
-                      <span style={{
-                        borderRadius: '999px',
-                        padding: '3px 8px',
-                        background: '#edf8f2',
-                        color: '#3a7f56',
-                        ...nunito(800, 11),
-                      }}>
-                        {playerCount} players
-                      </span>
-                      {selected && (
-                        <span style={{
-                          borderRadius: '999px',
-                          padding: '3px 8px',
-                          background: '#203955',
-                          color: '#f1f7ff',
-                          ...nunito(900, 10),
-                          letterSpacing: '0.06em',
-                        }}>
-                          SELECTED
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </button>
+                  island={island}
+                  selected={selected}
+                  onOpen={() => navigate(`/island?islandId=${island._id}`)}
+                />
               )
             })}
           </div>
