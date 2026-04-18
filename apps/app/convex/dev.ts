@@ -167,6 +167,17 @@ export const goodDay = mutation({
     // avg mood (common when agents haven't been onboarded yet, motivation=0)
     // gate the dev fast-forward. One good day = +1/buildTimeDays per building.
     await advanceConstructingBuildingsByDays(ctx, args.islandId, 1.0, 1);
+
+    // Clear today's check-ins so the todo list resets for the new day
+    const today = new Date().toISOString().slice(0, 10);
+    const todayCheckIns = await ctx.db
+      .query("checkIns")
+      .withIndex("by_island_date", (q) =>
+        q.eq("islandId", args.islandId).eq("date", today),
+      )
+      .collect();
+    await Promise.all(todayCheckIns.map((c) => ctx.db.delete(c._id)));
+
     return { ok: true, goalCount, currencyReward, xpReward, callerPhone };
   },
 });
@@ -194,6 +205,17 @@ export const badDay = mutation({
     await patchAgentMood(ctx, args.islandId, callerPhone, -15);
     const motivationFactor = await getIslandMotivationFactor(ctx, args.islandId);
     await advanceConstructingBuildingsByDays(ctx, args.islandId, motivationFactor, 1);
+
+    // Clear today's check-ins so the todo list resets for the new day
+    const today = new Date().toISOString().slice(0, 10);
+    const todayCheckIns = await ctx.db
+      .query("checkIns")
+      .withIndex("by_island_date", (q) =>
+        q.eq("islandId", args.islandId).eq("date", today),
+      )
+      .collect();
+    await Promise.all(todayCheckIns.map((c) => ctx.db.delete(c._id)));
+
     return { ok: true, callerPhone };
   },
 });
