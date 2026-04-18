@@ -24,7 +24,7 @@ def morning_reminder():
 
     for entry in members:
         agent = entry["agent"]
-        user = entry["user"]
+        phone_number = entry["phoneNumber"]
         goals = entry["goals"]
 
         already_sent = db.query("jobQueries:reminderSentToday", {
@@ -37,7 +37,7 @@ def morning_reminder():
 
         miss_streak = db.query("jobQueries:recentMissCount", {
             "islandId": entry["island"]["_id"],
-            "userId": user["_id"],
+            "phoneNumber": phone_number,
             "days": 7,
         })
 
@@ -49,7 +49,7 @@ def morning_reminder():
         else:
             message = _generate_k2_reminder(agent["personalityProfile"], goal_texts, miss_streak)
 
-        send_message(user["phoneNumber"], message)
+        send_message(phone_number, message)
 
         db.mutation("jobMutations:logAiMessage", {
             "agentId": agent["_id"],

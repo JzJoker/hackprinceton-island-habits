@@ -26,7 +26,7 @@ def end_of_day_miss():
     for entry in unchecked:
         goal = entry["goal"]
         island = entry["island"]
-        user = entry["user"]
+        phone_number = entry["phoneNumber"]
         agent = entry["agent"]
 
         already_missed = db.query("jobQueries:missAlreadyRecorded", {
@@ -43,7 +43,7 @@ def end_of_day_miss():
 
         db.mutation("jobMutations:recordMiss", {
             "goalId": goal["_id"],
-            "userId": user["_id"],
+            "phoneNumber": phone_number,
             "islandId": island["_id"],
             "agentId": agent["_id"],
             "newMotivation": new_motivation,
@@ -52,7 +52,7 @@ def end_of_day_miss():
 
         db.mutation("jobMutations:damageConstructingBuilding", {
             "islandId": island["_id"],
-            "userId": user["_id"],
+            "phoneNumber": phone_number,
         })
 
         # Broadcast low-motivation message if threshold just crossed
