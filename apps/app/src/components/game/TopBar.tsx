@@ -1,4 +1,5 @@
-import { Coins, Flame, Sparkles, Sun, Settings, ChevronDown, Zap } from "lucide-react";
+import { Coins, Flame, Sparkles, Sun, Home, ChevronDown, Zap } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useGame } from "@/game/state";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -6,6 +7,7 @@ const SEASONS = ["Winter", "Spring", "Spring", "Summer", "Summer", "Summer", "Au
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export const TopBar = () => {
+  const navigate = useNavigate();
   const { coins, streak, level, xp, agents, screen, setScreen, islandName } = useGame();
   const isMobile = useIsMobile();
   const onlineCount = agents.filter((a) => a.online).length;
@@ -189,8 +191,13 @@ export const TopBar = () => {
               <p className="text-[11px] font-extrabold display-font">{season} · {dayOfWeek}</p>
             </div>
           </div>
-          <button className="hud-panel-dark h-10 w-10 flex items-center justify-center hover:scale-105 transition">
-            <Settings className="h-4 w-4" strokeWidth={2.5} />
+          <button
+            onClick={() => navigate("/dashboard")}
+            title="Your Islands"
+            aria-label="Go to Your Islands"
+            className="hud-panel-dark h-10 w-10 flex items-center justify-center hover:scale-105 transition"
+          >
+            <Home className="h-4 w-4" strokeWidth={2.5} />
           </button>
         </div>
         <div className="flex items-center gap-2">
