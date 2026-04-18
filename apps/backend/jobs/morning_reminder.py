@@ -45,6 +45,7 @@ def morning_reminder():
     yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
 
     members = db.query("jobQueries:getActiveMembersWithGoals")
+    print(f"[morning-reminder] {len(members)} active members found")
     sent = 0
     skipped = 0
     failed = 0
@@ -106,10 +107,13 @@ def morning_reminder():
             if can_use_variant:
                 message = random.choice(variants)
                 reasoning = None
+                print(f"[morning-reminder] variant → {phone_number}: {message[:60]}")
             else:
+                print(f"[morning-reminder] K2 call for {phone_number} (recap={team_recap[:50]!r})")
                 message, reasoning = generate_morning_reminder(
                     personality, goal_texts, miss_streak, team_recap
                 )
+                print(f"[morning-reminder] K2 → {phone_number}: {message[:80]}")
 
             send_message(phone_number, message)
 
