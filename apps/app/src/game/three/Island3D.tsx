@@ -591,9 +591,9 @@ const Scene = ({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        agent_a_personality: { name: agentA.name, goal: agentA.goal, mood: agentA.mood },
-        agent_b_personality: { name: agentB.name, goal: agentB.goal, mood: agentB.mood },
-        recent_events: [`${agentA.name} and ${agentB.name} met on the island`],
+        agent_a_personality: { name: agentA.name.replace(/ Jr\.$/, ''), goal: agentA.goal, mood: agentA.mood },
+        agent_b_personality: { name: agentB.name.replace(/ Jr\.$/, ''), goal: agentB.goal, mood: agentB.mood },
+        recent_events: [`${agentA.name.replace(/ Jr\.$/, '')} and ${agentB.name.replace(/ Jr\.$/, '')} met on the island`],
       }),
     })
       .then((r) => (r.ok ? r.json() : null))
