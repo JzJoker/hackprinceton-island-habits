@@ -463,7 +463,6 @@ const Scene = ({
     placingType,
     islandEra,
     viewingEra,
-    islandHistory,
     timeOffsetMs,
     audioMuted,
     showToast,
@@ -655,9 +654,9 @@ const Scene = ({
 
   const displayEra = viewingEra ?? islandEra;
   const tier = ISLAND_TIERS[displayEra];
-  const displayBuildings = viewingEra !== null
-    ? (islandHistory[viewingEra]?.buildings ?? [])
-    : buildings;
+  // `buildings` now holds every era (the Convex bridge stopped filtering so
+  // past islands stay visitable). Scope down to the era currently on screen.
+  const displayBuildings = buildings.filter((b) => (b.placedAtEra ?? 0) === displayEra);
 
   return (
     <>

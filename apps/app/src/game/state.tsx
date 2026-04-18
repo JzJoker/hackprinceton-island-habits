@@ -529,7 +529,11 @@ export const GameProvider = ({
     if (!placingType) return false;
     const opt = BUILD_LIBRARY.find((b) => b.type === placingType)!;
     const currentRadius = ISLAND_TIERS[islandEra].radius;
-    const result = scorePlacement(placingType, pos, buildings, scenery, currentRadius);
+    // Placement collision / harmony scoring should only consider buildings
+    // on the CURRENT era — state.buildings now includes every era so past
+    // islands can be visited, but they don't block new placements.
+    const currentEraBuildings = buildings.filter((b) => (b.placedAtEra ?? 0) === islandEra);
+    const result = scorePlacement(placingType, pos, currentEraBuildings, scenery, currentRadius);
     if (!result.valid) { showToast(result.reason || "Can't place here"); return false; }
     const pendingId = `pending-${Date.now()}`;
     setPlacingType(null);
@@ -543,6 +547,7 @@ export const GameProvider = ({
         score: result.score,
         buildProgress: 0,
         buildTime: opt.buildDays,
+        placedAtEra: islandEra,
       },
     ]);
 
@@ -583,6 +588,16 @@ export const GameProvider = ({
   // (not just the one who clicked Fly) can open the visit UI for any era
   // they've already graduated past, because era lives on the server.
   const islandHistory = useMemo<IslandSnapshot[]>(() => {
+    // Group every synced building by the era it was placed in so the Visit
+    // UI can replay an old island's layout. `buildings` now holds ALL eras
+    // (the Convex bridge stopped filtering); we bucket them once here.
+    const buildingsByEra = new Map<number, Building[]>();
+    for (const b of buildings) {
+      const era = b.placedAtEra ?? 0;
+      const bucket = buildingsByEra.get(era) ?? [];
+      bucket.push(b);
+      buildingsByEra.set(era, bucket);
+    }
     const entries: IslandSnapshot[] = [];
     for (let era = 0; era < islandEra; era += 1) {
       const tier = ISLAND_TIERS[era];
@@ -591,14 +606,14 @@ export const GameProvider = ({
         era,
         name: tier.name,
         emoji: tier.emoji,
-        buildings: [],        // visit view fetches its own snapshot
-        level: 0,
+        buildings: buildingsByEra.get(era) ?? [],
+        level: 0,              // level-at-time-of-graduation isn't persisted
         coinsEarned: 0,
         graduatedAt: "",
       });
     }
     return entries;
-  }, [islandEra]);
+  }, [islandEra, buildings]);
 
   // Derived: group motivation factor (0–1). Used by ticker + UI.
   const groupMotivation = useMemo(() => {

@@ -236,24 +236,23 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
 
   useEffect(() => {
     if (!islandBuildings) return
-    const currentEra = islandDetails?.island?.era ?? 0
+    // Sync every building on the island regardless of era. The renderer
+    // decides which to show (current era by default, or a past era when the
+    // user opens Visit). Keeping all eras in state means islandHistory can
+    // accurately report building counts per era and the 3D scene can repaint
+    // the old layout when someone visits.
     syncFromConvex({
-      // Only show buildings placed during the active era — older eras remain
-      // in the table so visits can still browse them, but a fresh era must
-      // feel like a blank island.
-      buildings: islandBuildings
-        .filter((b) => (b.placedAtEra ?? 0) === currentEra)
-        .map((b) => ({
-          id: b._id,
-          type: b.type as BuildingType,
-          pos: [b.gridX, b.gridY] as [number, number],
-          district: 'main' as DistrictId,
-          buildProgress: b.buildProgress,
-          buildTime: b.buildTimeDays,
-          placedAtEra: b.placedAtEra ?? 0,
-        })),
+      buildings: islandBuildings.map((b) => ({
+        id: b._id,
+        type: b.type as BuildingType,
+        pos: [b.gridX, b.gridY] as [number, number],
+        district: 'main' as DistrictId,
+        buildProgress: b.buildProgress,
+        buildTime: b.buildTimeDays,
+        placedAtEra: b.placedAtEra ?? 0,
+      })),
     })
-  }, [islandBuildings, islandDetails, syncFromConvex])
+  }, [islandBuildings, syncFromConvex])
 
   useEffect(() => {
     if (!islandGoals) return
@@ -338,17 +337,17 @@ export function IslandPage() {
     const xp = Math.min(100, Math.round((progressInLevel / 20) * 100))
 
     const currentEra = islandDetails.island.era ?? 0
-    const buildings: Building[] = (islandBuildings ?? [])
-      .filter((b) => (b.placedAtEra ?? 0) === currentEra)
-      .map((b) => ({
-        id: b._id,
-        type: b.type as BuildingType,
-        pos: [b.gridX, b.gridY] as [number, number],
-        district: 'main' as DistrictId,
-        buildProgress: b.buildProgress,
-        buildTime: b.buildTimeDays,
-        placedAtEra: b.placedAtEra ?? 0,
-      }))
+    // Seed with every building — the client filters by era at render time
+    // so the Visit UI can still replay a past island's layout.
+    const buildings: Building[] = (islandBuildings ?? []).map((b) => ({
+      id: b._id,
+      type: b.type as BuildingType,
+      pos: [b.gridX, b.gridY] as [number, number],
+      district: 'main' as DistrictId,
+      buildProgress: b.buildProgress,
+      buildTime: b.buildTimeDays,
+      placedAtEra: b.placedAtEra ?? 0,
+    }))
 
     return {
       islandName: islandDetails.island.name,
