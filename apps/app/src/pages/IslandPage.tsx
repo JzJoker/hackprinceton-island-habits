@@ -89,6 +89,21 @@ function mapIslandGoalsToUiGoals(
   }))
 }
 
+function BuildProgressSync({ islandId }: { islandId: Id<'islands'> }) {
+  const { buildings, groupMotivation } = useGame()
+  const tickProgress = useMutation(api.buildings.tickBuildProgress)
+
+  useEffect(() => {
+    if (!buildings.some((b) => b.buildProgress < 1)) return
+    const id = setInterval(() => {
+      tickProgress({ islandId, motivationFactor: groupMotivation }).catch(console.error)
+    }, 30_000)
+    return () => clearInterval(id)
+  }, [buildings, groupMotivation, islandId, tickProgress])
+
+  return null
+}
+
 function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
   const { syncFromConvex } = useGame()
   const islandDetails = useQuery(api.islands.getIslandDetails, { islandId })
@@ -290,6 +305,7 @@ export function IslandPage() {
   return (
     <GameProvider key={islandId} initialData={bootstrap}>
       <ConvexSyncBridge islandId={islandId} />
+      <BuildProgressSync islandId={islandId} />
       <div className="island-harmony-root h-screen w-screen overflow-hidden">
         <Suspense fallback={
           <div className="grid h-screen w-screen place-items-center bg-neutral-900 text-white">
