@@ -1,7 +1,8 @@
 import os
+from typing import Optional
 from convex import ConvexClient
 
-_client: ConvexClient | None = None
+_client: Optional[ConvexClient] = None
 
 
 def get_client() -> ConvexClient:

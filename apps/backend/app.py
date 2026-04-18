@@ -2,6 +2,9 @@ import base64
 import os
 import uuid
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import requests
 from flask import Flask, jsonify, request
 from flask_cors import CORS
