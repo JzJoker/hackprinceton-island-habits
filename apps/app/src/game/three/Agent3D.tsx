@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Html, Float } from "@react-three/drei";
 import * as THREE from "three";
+import { BUILD_LIBRARY } from "../state";
 import type { Agent, Building, Scenery } from "../state";
 
 interface Props {
@@ -57,6 +58,7 @@ export const Agent3D = ({
   const seedHash = useMemo(() => hashAgentId(agent.id), [agent.id]);
   const seed = useMemo(() => (seedHash % 10_000) / 10_000, [seedHash]);
   const GROUND_Y = 0.26;
+  const AGENT_RADIUS = 0.32;
 
   // Stable deterministic route per agent so all tabs/accounts animate identically.
   const orderedWaypoints = useMemo<[number, number][]>(() => {
@@ -75,10 +77,15 @@ export const Agent3D = ({
   const pos = useRef(new THREE.Vector3(agent.home[0], GROUND_Y, agent.home[1]));
   const angle = useRef(seed * Math.PI * 2);
   const walkCycle = useRef(0);
+  // Cumulative offset applied on top of deterministic lerp so agents can slide
+  // around obstacles instead of clipping through buildings/scenery.
+  const displacement = useRef(new THREE.Vector2(0, 0));
 
   // Keep fresh refs so useFrame closure always has latest live data.
   const buildingsRef = useRef(buildings);
   buildingsRef.current = buildings;
+  const sceneryRef = useRef(scenery);
+  sceneryRef.current = scenery;
   const sceneryCountRef = useRef(scenery.length);
   sceneryCountRef.current = scenery.length;
 
@@ -140,6 +147,47 @@ export const Agent3D = ({
         GROUND_Y,
         start[1] + (end[1] - start[1]) * routeT,
       );
+    }
+
+    // ── Obstacle repulsion: keep agents from clipping through buildings/scenery ──
+    let pushX = 0;
+    let pushZ = 0;
+    for (const b of buildingsRef.current) {
+      const opt = BUILD_LIBRARY.find((x) => x.type === b.type);
+      const bR = (opt?.radius ?? 0.5) + AGENT_RADIUS;
+      const dx = pos.current.x - b.pos[0];
+      const dz = pos.current.z - b.pos[1];
+      const d = Math.hypot(dx, dz);
+      if (d < bR && d > 0.001) {
+        const str = ((bR - d) / bR) * 5;
+        pushX += (dx / d) * str;
+        pushZ += (dz / d) * str;
+      }
+    }
+    for (const s of sceneryRef.current) {
+      if (s.type === "flower") continue;
+      const sR = (s.type === "tree" ? 0.38 : 0.22) + AGENT_RADIUS;
+      const dx = pos.current.x - s.pos[0];
+      const dz = pos.current.z - s.pos[1];
+      const d = Math.hypot(dx, dz);
+      if (d < sR && d > 0.001) {
+        const str = ((sR - d) / sR) * 4;
+        pushX += (dx / d) * str;
+        pushZ += (dz / d) * str;
+      }
+    }
+    const collisionDt = Math.min(delta, 0.05);
+    if (gossipApproachTarget) {
+      // Approach mode: pos is incremental, so push applies directly and persists.
+      pos.current.x += pushX * collisionDt;
+      pos.current.z += pushZ * collisionDt;
+    } else {
+      // Waypoint mode: pos is overwritten every frame by deterministic lerp,
+      // so we accumulate the push into a decaying displacement offset.
+      displacement.current.x = (displacement.current.x + pushX * collisionDt) * 0.9;
+      displacement.current.y = (displacement.current.y + pushZ * collisionDt) * 0.9;
+      pos.current.x += displacement.current.x;
+      pos.current.z += displacement.current.y;
     }
 
     // Optional "work mode": if agent gets very close to an active construction,

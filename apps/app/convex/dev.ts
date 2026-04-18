@@ -70,6 +70,28 @@ async function advanceConstructingBuildingsByDays(
   }
 }
 
+// Reward per completed goal — matches per-check-in rate in goals.checkIn
+// (currency +10, xp +1) so a full good day pays out as if every active goal
+// of the user had been checked in once.
+const GOAL_REWARD_CURRENCY = 10;
+const GOAL_REWARD_XP = 1;
+
+async function countActiveGoalsForUser(
+  ctx: MutationCtx,
+  islandId: Id<"islands">,
+  phoneNumber: string | undefined,
+): Promise<number> {
+  if (!phoneNumber) return 0;
+  const goals = await ctx.db
+    .query("goals")
+    .withIndex("by_island_phone", (q) =>
+      q.eq("islandId", islandId).eq("phoneNumber", phoneNumber),
+    )
+    .filter((q) => q.eq(q.field("status"), "active"))
+    .collect();
+  return goals.length;
+}
+
 export const goodDay = mutation({
   args: {
     islandId: v.id("islands"),
@@ -79,8 +101,19 @@ export const goodDay = mutation({
     const island = await ctx.db.get(args.islandId);
     if (!island) throw new Error("Island not found");
 
+    const goalCount = await countActiveGoalsForUser(
+      ctx,
+      args.islandId,
+      args.phoneNumber,
+    );
+    const currencyReward = goalCount * GOAL_REWARD_CURRENCY;
+    const xpReward = goalCount * GOAL_REWARD_XP;
+    const nextXp = (island.xp ?? 0) + xpReward;
+
     await ctx.db.patch(args.islandId, {
-      currency: (island.currency ?? 0) + 50,
+      currency: (island.currency ?? 0) + currencyReward,
+      xp: nextXp,
+      islandLevel: Math.floor(nextXp / 20),
       streakDays: Math.max(1, (island.streakDays ?? 0) + 1),
       dayCount: (island.dayCount ?? 1) + 1,
     });
@@ -88,7 +121,7 @@ export const goodDay = mutation({
     await patchAgentMood(ctx, args.islandId, args.phoneNumber, 8);
     const motivationFactor = await getIslandMotivationFactor(ctx, args.islandId);
     await advanceConstructingBuildingsByDays(ctx, args.islandId, motivationFactor, 1);
-    return { ok: true };
+    return { ok: true, goalCount, currencyReward, xpReward };
   },
 });
 
