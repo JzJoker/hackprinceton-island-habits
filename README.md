@@ -15,7 +15,8 @@ npm run dev
 .
 └── apps
     ├── app
-    └── agent
+    ├── agent
+    └── backend
 ```
 
 ## Useful scripts
