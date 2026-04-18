@@ -298,7 +298,11 @@ const BuildTicker = () => {
   return null;
 };
 
-/* ── Camera tracker — smoothly follows the you-agent ─── */
+/* ── Camera tracker — follows the you-agent while preserving user angle/zoom ─── */
+const SNAP_DURATION = 0.75; // seconds to animate zoom/tilt on tracking enable
+const SNAP_DIST = 7;        // target follow distance when tracking starts
+const SNAP_HEIGHT = 4.5;    // camera height when tracking starts
+
 const CameraTracker = ({
   tracking,
   agentPos,
@@ -309,71 +313,59 @@ const CameraTracker = ({
   controlsRef: MutableRefObject<OrbitControlsImpl | null>;
 }) => {
   const wasTracking = useRef(false);
-  const initialized = useRef(false);
+  const snapElapsed = useRef(0);
   const lastAgentPos = useRef(new THREE.Vector3());
-  const heading = useRef(0);
-  const desiredCamPos = useRef(new THREE.Vector3());
-  const desiredTarget = useRef(new THREE.Vector3());
   const moveDelta = useRef(new THREE.Vector3());
 
   useFrame((state, delta) => {
     const controls = controlsRef.current;
     if (!tracking || !controls) {
       wasTracking.current = false;
+      snapElapsed.current = 0;
       return;
-    }
-    if (!wasTracking.current) {
-      initialized.current = false;
-      wasTracking.current = true;
     }
 
     const current = agentPos.current;
-    if (!initialized.current) {
+
+    if (!wasTracking.current) {
+      // Tracking just enabled — reset snap timer and seed lastAgentPos
       lastAgentPos.current.copy(current);
-      const cameraDir = new THREE.Vector3(
-        state.camera.position.x - controls.target.x,
-        0,
-        state.camera.position.z - controls.target.z,
+      snapElapsed.current = 0;
+      wasTracking.current = true;
+    }
+
+    snapElapsed.current += delta;
+
+    if (snapElapsed.current < SNAP_DURATION) {
+      // ── Snap phase: animate to zoomed-in view, preserving current azimuth ──
+      // Preserve the horizontal angle the user was looking from
+      const dx = state.camera.position.x - controls.target.x;
+      const dz = state.camera.position.z - controls.target.z;
+      const horiz = Math.sqrt(dx * dx + dz * dz);
+      const ax = horiz > 0.01 ? dx / horiz : 0;
+      const az = horiz > 0.01 ? dz / horiz : 1;
+
+      const desiredTarget = new THREE.Vector3(current.x, 0.5, current.z);
+      const desiredCamPos = new THREE.Vector3(
+        current.x + ax * SNAP_DIST,
+        SNAP_HEIGHT,
+        current.z + az * SNAP_DIST,
       );
-      if (cameraDir.lengthSq() < 1e-5) {
-        cameraDir.set(0, 0, 1);
+
+      const t = Math.min(1, delta * 5);
+      controls.target.lerp(desiredTarget, t);
+      state.camera.position.lerp(desiredCamPos, t);
+      controls.update();
+    } else {
+      // ── Follow phase: translate camera+target by agent's movement delta ──
+      // Angle and zoom are fully under user control; we only pan with the agent.
+      moveDelta.current.copy(current).sub(lastAgentPos.current);
+      if (moveDelta.current.lengthSq() > 1e-6) {
+        controls.target.add(moveDelta.current);
+        state.camera.position.add(moveDelta.current);
+        controls.update();
       }
-      cameraDir.normalize();
-      heading.current = Math.atan2(-cameraDir.x, -cameraDir.z);
-      initialized.current = true;
     }
-
-    moveDelta.current.copy(current).sub(lastAgentPos.current);
-    if (moveDelta.current.lengthSq() > 0.000004) {
-      const desiredHeading = Math.atan2(moveDelta.current.x, moveDelta.current.z);
-      let d = desiredHeading - heading.current;
-      d = ((d + Math.PI) % (Math.PI * 2)) - Math.PI;
-      heading.current += d * Math.min(1, delta * 9);
-    }
-
-    const sinH = Math.sin(heading.current);
-    const cosH = Math.cos(heading.current);
-    const followDistance = 3.5;
-    const followHeight = 1.55;
-    const shoulderOffset = 0.2;
-    const lookAhead = 0.38;
-
-    desiredCamPos.current.set(
-      current.x - sinH * followDistance - cosH * shoulderOffset,
-      followHeight,
-      current.z - cosH * followDistance + sinH * shoulderOffset,
-    );
-    desiredTarget.current.set(
-      current.x + sinH * lookAhead,
-      0.66,
-      current.z + cosH * lookAhead,
-    );
-
-    const camLerp = Math.min(1, delta * 7.8);
-    const targetLerp = Math.min(1, delta * 11);
-    state.camera.position.lerp(desiredCamPos.current, camLerp);
-    controls.target.lerp(desiredTarget.current, targetLerp);
-    controls.update();
 
     lastAgentPos.current.copy(current);
   });
@@ -562,11 +554,11 @@ export const Island3D = () => {
           <OrbitControls
             ref={controlsRef}
             enablePan={false}
-            enableRotate={!trackAgent}
-            minDistance={trackAgent ? 1.4 : 4}
-            maxDistance={trackAgent ? 9 : 55}
-            minPolarAngle={trackAgent ? Math.PI / 3.3 : Math.PI / 6}
-            maxPolarAngle={trackAgent ? Math.PI / 2.2 : Math.PI / 2.3}
+            enableRotate
+            minDistance={4}
+            maxDistance={55}
+            minPolarAngle={Math.PI / 6}
+            maxPolarAngle={Math.PI / 2.3}
             target={[0, 0.5, 0]}
             autoRotate={false}
             enableDamping
