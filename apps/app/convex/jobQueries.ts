@@ -185,7 +185,6 @@ export const getIslandsForWeeklySummary = query({
   handler: async (ctx) => {
     const islands = await ctx.db
       .query("islands")
-      .filter((q) => q.eq(q.field("status"), "active"))
       .collect();
 
     const since = Date.now() - 7 * 86400000;
@@ -213,6 +212,28 @@ export const getIslandsForWeeklySummary = query({
     }
 
     return results;
+  },
+});
+
+// Debug: returns raw counts to diagnose why getActiveMembersWithGoals returns empty
+export const debugMemberPipeline = query({
+  args: {},
+  handler: async (ctx) => {
+    const members = await ctx.db.query("islandMembers").collect();
+    const agents = await ctx.db.query("agents").collect();
+    const goals = await ctx.db.query("goals").collect();
+    const islands = await ctx.db.query("islands").collect();
+    return {
+      memberCount: members.length,
+      agentCount: agents.length,
+      goalCount: goals.length,
+      islandCount: islands.length,
+      activeGoalCount: goals.filter((g) => g.status === "active").length,
+      members: members.map((m) => ({ islandId: m.islandId, phoneNumber: m.phoneNumber })),
+      agents: agents.map((a) => ({ islandId: a.islandId, phoneNumber: a.phoneNumber })),
+      goals: goals.map((g) => ({ islandId: g.islandId, phoneNumber: g.phoneNumber, status: g.status })),
+      islands: islands.map((i) => ({ id: i._id, status: i.status, name: i.name })),
+    };
   },
 });
 

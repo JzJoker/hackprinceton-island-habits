@@ -18,6 +18,13 @@ DEFAULT_PERSONALITY = {
 }
 
 
+@jobs_bp.get("/debug-members")
+def debug_members():
+    db = get_client()
+    result = db.query("jobQueries:debugMemberPipeline")
+    return jsonify(result)
+
+
 @jobs_bp.post("/morning-reminder")
 def morning_reminder():
     db = get_client()
