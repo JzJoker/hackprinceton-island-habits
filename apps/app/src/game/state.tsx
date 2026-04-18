@@ -538,6 +538,13 @@ export const GameProvider = ({
   const placeBuildingAt = useCallback((pos: [number, number]): boolean => {
     if (!placingType) return false;
     const opt = BUILD_LIBRARY.find((b) => b.type === placingType)!;
+    // Affordability check FIRST — the server would also reject, but we want
+    // the player to see a clear "Not enough coins" toast instead of the
+    // building briefly appearing and then vanishing on rollback.
+    if (coins < opt.cost) {
+      showToast(`Need ${opt.cost} coins · you have ${coins}`);
+      return false;
+    }
     const currentRadius = ISLAND_TIERS[islandEra].radius;
     // Placement collision / harmony scoring should only consider buildings
     // on the CURRENT era — state.buildings now includes every era so past
@@ -547,6 +554,9 @@ export const GameProvider = ({
     if (!result.valid) { showToast(result.reason || "Can't place here"); return false; }
     const pendingId = `pending-${Date.now()}`;
     setPlacingType(null);
+    // Optimistic updates so the UI reflects the cost immediately. The
+    // Convex sync bridge will replace `buildings` and reconcile `coins` with
+    // the server once the mutation lands. On failure we roll both back.
     setBuildings((bs) => [
       ...bs,
       {
@@ -560,6 +570,7 @@ export const GameProvider = ({
         placedAtEra: islandEra,
       },
     ]);
+    setCoins((c) => c - opt.cost);
 
     const persist = onBuildingPlacedRef.current;
     if (!persist) {
@@ -570,18 +581,18 @@ export const GameProvider = ({
     showToast(`Placing ${opt.name}...`);
     Promise.resolve(persist(placingType, pos[0], pos[1], opt.cost, opt.buildDays))
       .then(() => {
-        // Convex sync bridge will replace pending entries with canonical records.
         showToast(`+${result.score} harmony · ${opt.name} built!`);
       })
       .catch((err) => {
         console.error("Failed to persist building placement", err);
         setBuildings((bs) => bs.filter((b) => b.id !== pendingId));
+        setCoins((c) => c + opt.cost);
         const message = err instanceof Error ? err.message : "Failed to place building";
         showToast(message);
       });
 
     return true;
-  }, [placingType, buildings, scenery, islandEra, showToast]);
+  }, [placingType, buildings, coins, scenery, islandEra, showToast]);
 
   const cancelPlacing = useCallback(() => setPlacingType(null), []);
 
