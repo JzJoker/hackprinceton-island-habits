@@ -1,5 +1,6 @@
 import { Link, Navigate, Route, Routes } from 'react-router-dom'
 import { OnboardingPage } from './pages/OnboardingPage'
+import { AdminPage } from './pages/AdminPage'
 
 function HomePage() {
   return (
@@ -34,6 +35,7 @@ function App() {
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/onboarding" element={<OnboardingPage />} />
+      <Route path="/admin" element={<AdminPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
