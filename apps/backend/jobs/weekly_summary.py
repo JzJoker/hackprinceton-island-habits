@@ -1,14 +1,9 @@
-import os
-
-import requests
 from flask import jsonify
 
 from jobs import jobs_bp
 from jobs.convex_client import get_client
+from jobs.k2 import generate_weekly_summary
 from jobs.photon import send_group_message
-
-K2_API_URL = os.environ.get("K2_API_URL", "")
-K2_API_KEY = os.environ.get("K2_API_KEY", "")
 
 
 @jobs_bp.post("/weekly-summary")
@@ -27,8 +22,12 @@ def weekly_summary():
             continue
 
         stats = _aggregate_stats(events, island)
-        tone = _determine_tone(stats["completion_rate"])
-        narrative = _generate_narrative(stats, tone, island["name"])
+        narrative = generate_weekly_summary(
+            stats["total_checkins"],
+            stats["total_misses"],
+            stats["builds_completed"],
+            stats["top_completer"] or "nobody",
+        )
 
         send_group_message(phones, narrative)
 
@@ -85,33 +84,5 @@ def _aggregate_stats(events: list, island: dict) -> dict:
         "island_level": island.get("islandLevel", 1),
     }
 
-
-def _determine_tone(completion_rate: float) -> str:
-    if completion_rate >= 0.8:
-        return "happy and proud — the island is thriving"
-    elif completion_rate >= 0.5:
-        return "calm and reflective — a steady week"
-    else:
-        return "quiet and understanding — never judgmental, just honest about a hard week"
-
-
-def _generate_narrative(stats: dict, tone: str, island_name: str) -> str:
-    prompt = (
-        f"You are the island '{island_name}' speaking to its inhabitants.\n"
-        f"Write a short weekly summary paragraph (3-5 sentences) in first person from the island's perspective.\n"
-        f"Tone: {tone}.\n"
-        f"This week: {stats['total_checkins']} goals completed, {stats['total_misses']} missed, "
-        f"{stats['builds_completed']} buildings finished, {stats['buildings_damaged']} buildings damaged.\n"
-        f"The island is at level {stats['island_level']}.\n"
-        "Do not use hashtags or emojis. Make it feel personal and alive."
-    )
-    resp = requests.post(
-        K2_API_URL,
-        headers={"Authorization": f"Bearer {K2_API_KEY}", "Content-Type": "application/json"},
-        json={"model": "k2-think-v2", "messages": [{"role": "user", "content": prompt}], "max_tokens": 200},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"].strip()
 
 
