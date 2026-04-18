@@ -115,8 +115,6 @@ export default defineSchema({
     buildProgress: v.number(),
     buildTimeDays: v.number(),
     costPaid: v.number(),
-    logCost: v.optional(v.number()),
-    rockCost: v.optional(v.number()),
     placedBy: v.string(),
     placedAt: v.number(),
     completedAt: v.optional(v.number()),
