@@ -11,6 +11,7 @@ import { ExpandOverlay } from "@/game/overlays/ExpandOverlay";
 import { PartyOverlay } from "@/game/overlays/PartyOverlay";
 import { ToastLayer } from "@/game/overlays/ToastLayer";
 import { MobilePlacingHUD } from "./MobilePlacingHUD";
+import { DevPanel } from "./DevPanel";
 import { useGame } from "@/game/state";
 
 const VisitBanner = () => {
@@ -97,6 +98,11 @@ export const GameWindow = () => (
         <TopBar />
         <QuestLog />
         <ActionDock />
+      </div>
+
+      {/* Dev panel — desktop only, sits flush below dock */}
+      <div className="absolute bottom-0 right-0 z-[45] pointer-events-none">
+        <DevPanel />
       </div>
 
       {/* Layer 1.5 — Mobile placement HUD (crosshair + place button) */}
