@@ -1,15 +1,14 @@
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { useUser } from '@clerk/clerk-react'
 import { usePhoneNumber } from '../hooks/usePhoneNumber'
+
+const ISLAND_ID_PARAM = 'islandId'
 
 export function IslandPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { user } = useUser()
   const phone = usePhoneNumber()
-  
-  const islandId = searchParams.get('islandId')
-  const playerId = searchParams.get('playerId') || phone || user?.id
+
+  const islandId = searchParams.get(ISLAND_ID_PARAM)
 
   return (
     <main className="h-screen w-screen bg-black text-white relative overflow-hidden">
@@ -24,9 +23,6 @@ export function IslandPage() {
         <h1 className="text-3xl font-bold mb-4">Island Fullscreen View</h1>
         <p className="text-neutral-400 font-mono text-sm mb-2">
           Island ID: {islandId || 'Not provided'}
-        </p>
-        <p className="text-neutral-400 font-mono text-sm">
-          Player ID: {playerId || 'Not provided'}
         </p>
         
         <div className="mt-8 border border-dashed border-neutral-600 p-8 rounded-xl max-w-lg">
