@@ -5,6 +5,7 @@ export function usePhoneNumber(): string {
   return (
     user?.primaryPhoneNumber?.phoneNumber ??
     user?.phoneNumbers?.[0]?.phoneNumber ??
+    (user?.unsafeMetadata?.phoneNumber as string | undefined) ??
     ''
   )
 }

@@ -71,6 +71,7 @@ function mapIslandGoalsToUiGoals(
     _id: Id<'goals'>
     text: string
   }[] | undefined,
+  checkedInGoalIds: Set<string>,
 ): Goal[] {
   if (!goals || goals.length === 0) {
     return [
@@ -83,7 +84,7 @@ function mapIslandGoalsToUiGoals(
   return goals.slice(0, 10).map((goal, idx) => ({
     id: goal._id,
     text: goal.text,
-    done: false,
+    done: checkedInGoalIds.has(goal._id),
     reward: 10 + ((idx % 3) + 1) * 5,
     photo: false,
   }))
@@ -159,6 +160,10 @@ export function IslandPage() {
   const islandBuildings = useQuery(
     api.buildings.getBuildings,
     islandId ? { islandId } : 'skip',
+  )
+  const todayCheckIns = useQuery(
+    api.goals.getTodayCheckIns,
+    islandId && phone ? { islandId, phoneNumber: phone, date: new Date().toISOString().slice(0, 10) } : 'skip',
   )
   const placeBuildingMut = useMutation(api.buildings.placeBuilding)
 
@@ -236,23 +241,27 @@ export function IslandPage() {
       xp,
       coins: islandDetails.island.currency ?? 0,
       agents,
-      goals: mapIslandGoalsToUiGoals(islandGoals),
+      goals: mapIslandGoalsToUiGoals(
+        islandGoals,
+        new Set((todayCheckIns ?? []).map((c) => c.goalId)),
+      ),
       buildings,
       onBuildingPlaced: (type, x, y, cost, days) => {
-        if (!islandId || !phone) return
+        if (!islandId) return
+        const placedBy = phone || 'unknown'
         placeBuildingMut({
           islandId,
           type,
           gridX: x,
           gridY: y,
           costPaid: cost,
-          placedBy: phone,
+          placedBy,
           buildTimeDays: days,
         }).catch(console.error)
       },
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [islandDetails, islandGoals, islandBuildings, phone, user?.unsafeMetadata?.icloudEmail, islandId])
+  }, [islandDetails, islandGoals, islandBuildings, todayCheckIns, phone, user?.unsafeMetadata?.icloudEmail, islandId])
 
   if (!islandId) {
     return (
@@ -268,7 +277,7 @@ export function IslandPage() {
   }
 
   // Handle loading state
-  if (islandDetails === undefined || islandGoals === undefined) {
+  if (islandDetails === undefined || islandGoals === undefined || islandBuildings === undefined) {
     return (
       <main className="grid min-h-screen place-items-center bg-white px-6 text-black">
         <div className="max-w-md rounded-lg border border-black p-6 text-center">

@@ -122,12 +122,12 @@ export const CheckInOverlay = () => {
                   completeGoal(pendingCheckIn.id);
                   setScreen(null);
                   setPhotoTaken(false);
-                  if (islandId && phoneNumber) {
+                  if (islandId) {
                     const today = new Date().toISOString().slice(0, 10);
                     checkInMut({
                       goalId: pendingCheckIn.id as Id<"goals">,
                       islandId: islandId as Id<"islands">,
-                      phoneNumber,
+                      phoneNumber: phoneNumber || 'unknown',
                       date: today,
                     }).catch(console.error);
                   }
