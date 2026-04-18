@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useMemo, useRef } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import a1 from "@/assets/agent-1.png";
 import a2 from "@/assets/agent-2.png";
@@ -55,6 +55,7 @@ export interface Building {
   score?: number;
   buildProgress: number;   // 0 = just placed, 1 = complete
   buildTime: number;       // total days needed (from BUILD_LIBRARY.buildDays)
+  placedAtEra?: number;    // graduation era at placement (0 = Pine Hollow …)
 }
 
 export interface BuildOption {
@@ -171,7 +172,7 @@ export interface ChatMsg { from: "agent" | "you"; text: string; ts: number; }
 export interface Scenery { id: string; type: "tree" | "rock" | "flower"; pos: [number, number]; district: DistrictId; variant: number; }
 
 type ConvexSyncPatch = Partial<
-  Pick<GameState, "level" | "xp" | "coins" | "streak" | "dayCount" | "agents" | "buildings" | "goals">
+  Pick<GameState, "level" | "xp" | "coins" | "streak" | "dayCount" | "islandEra" | "agents" | "buildings" | "goals">
 > & {
   serverNowMs?: number;
 };
@@ -258,6 +259,8 @@ export interface GameBootstrapData {
   onDevNextDay?: () => void | Promise<void>;
   onDevNextDayBad?: () => void | Promise<void>;
   onDevLevelUp?: () => void | Promise<void>;
+  onGraduateEra?: () => void | Promise<unknown>;
+  islandEra?: number;
 }
 
 const Ctx = createContext<GameState | null>(null);
@@ -395,6 +398,18 @@ export const GameProvider = ({
   const onDevNextDayRef = useRef(initialData?.onDevNextDay);
   const onDevNextDayBadRef = useRef(initialData?.onDevNextDayBad);
   const onDevLevelUpRef = useRef(initialData?.onDevLevelUp);
+  const onGraduateEraRef = useRef(initialData?.onGraduateEra);
+
+  // Keep callback refs in sync when the host (IslandPage) memoizes a new
+  // bootstrap object — useRef only captures the first render's value.
+  useEffect(() => {
+    onBuildingPlacedRef.current = initialData?.onBuildingPlaced;
+    onGoalCompletedRef.current = initialData?.onGoalCompleted;
+    onDevNextDayRef.current = initialData?.onDevNextDay;
+    onDevNextDayBadRef.current = initialData?.onDevNextDayBad;
+    onDevLevelUpRef.current = initialData?.onDevLevelUp;
+    onGraduateEraRef.current = initialData?.onGraduateEra;
+  }, [initialData]);
 
   const [screen, setScreen] = useState<ScreenId>(null);
   const [selectedAgent, setSelectedAgent] = useState<AgentId>(seededAgents[0]?.id ?? "sofia");
@@ -419,7 +434,7 @@ export const GameProvider = ({
   const [islandName] = useState(seededIslandName);
 
   // Island era state — start on era 0 (Pine Hollow) with no history
-  const [islandEra, setIslandEra] = useState(0);
+  const [islandEra, setIslandEra] = useState(initialData?.islandEra ?? 0);
   const [islandHistory, setIslandHistory] = useState<IslandSnapshot[]>([]);
   const [trackAgent, setTrackAgent] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -437,6 +452,7 @@ export const GameProvider = ({
     if (patch.coins !== undefined) setCoins(patch.coins);
     if (patch.streak !== undefined) setStreak(patch.streak);
     if (patch.dayCount !== undefined) setDayCount(patch.dayCount);
+    if (patch.islandEra !== undefined) setIslandEra(patch.islandEra);
     if (patch.serverNowMs !== undefined) {
       setTimeOffsetMs(patch.serverNowMs - Date.now());
     }
@@ -471,7 +487,7 @@ export const GameProvider = ({
     const next = ISLAND_TIERS[islandEra + 1];
     if (!next) return;
     if (level < next.unlockLevel) { showToast(`Need Lv.${next.unlockLevel}`); return; }
-    // Save snapshot
+    // Save snapshot locally for the "visit history" UI.
     setIslandHistory(h => [...h, {
       era: islandEra,
       name: ISLAND_TIERS[islandEra].name,
@@ -481,16 +497,33 @@ export const GameProvider = ({
       coinsEarned: coins,
       graduatedAt: new Date().toISOString(),
     }]);
-    // Transition animation
     setIsTransitioning(true);
-    setTimeout(() => {
-      setIslandEra(islandEra + 1);
-      setBuildings([]);
+    // In Convex mode, the era is the source of truth — mutating it on the
+    // server makes old-era buildings stay parked (placedAtEra < new era) and
+    // the new era start empty. Local state gets re-synced by ConvexSyncBridge.
+    const persist = onGraduateEraRef.current;
+    const finishLocal = () => {
+      if (!islandId) {
+        // Offline/demo path: mutate local state since there is no server.
+        setIslandEra(islandEra + 1);
+        setBuildings([]);
+      }
       setScreen(null);
       setIsTransitioning(false);
       showToast(`🏝️ Welcome to ${next.name}!`);
-    }, 1200);
-  }, [islandEra, buildings, level, coins, showToast]);
+    };
+    if (persist) {
+      Promise.resolve(persist())
+        .then(() => setTimeout(finishLocal, 1200))
+        .catch((err) => {
+          console.error("Failed to graduate era", err);
+          setIsTransitioning(false);
+          showToast(err instanceof Error ? err.message : "Failed to graduate");
+        });
+    } else {
+      setTimeout(finishLocal, 1200);
+    }
+  }, [islandEra, buildings, level, coins, islandId, showToast]);
 
   const placeBuildingAt = useCallback((pos: [number, number]): boolean => {
     if (!placingType) return false;

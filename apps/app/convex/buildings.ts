@@ -84,6 +84,7 @@ export const placeBuilding = mutation({
       state: "constructing",
       buildProgress: 0,
       placedAt: Date.now(),
+      placedAtEra: island.era ?? 0,
     });
     // Keep persistence/sync resilient: never reject placement due to
     // stale client-side economy state. Clamp server currency at zero.

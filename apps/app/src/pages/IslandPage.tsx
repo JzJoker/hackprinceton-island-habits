@@ -181,6 +181,7 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
       coins: islandDetails.island.currency ?? 0,
       streak: islandDetails.island.streakDays ?? 0,
       dayCount: islandDetails.island.dayCount ?? 1,
+      islandEra: islandDetails.island.era ?? 0,
       serverNowMs: islandDetails.serverNowMs,
       agents,
     })
@@ -188,17 +189,24 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
 
   useEffect(() => {
     if (!islandBuildings) return
+    const currentEra = islandDetails?.island?.era ?? 0
     syncFromConvex({
-      buildings: islandBuildings.map((b) => ({
-        id: b._id,
-        type: b.type as BuildingType,
-        pos: [b.gridX, b.gridY] as [number, number],
-        district: 'main' as DistrictId,
-        buildProgress: b.buildProgress,
-        buildTime: b.buildTimeDays,
-      })),
+      // Only show buildings placed during the active era — older eras remain
+      // in the table so visits can still browse them, but a fresh era must
+      // feel like a blank island.
+      buildings: islandBuildings
+        .filter((b) => (b.placedAtEra ?? 0) === currentEra)
+        .map((b) => ({
+          id: b._id,
+          type: b.type as BuildingType,
+          pos: [b.gridX, b.gridY] as [number, number],
+          district: 'main' as DistrictId,
+          buildProgress: b.buildProgress,
+          buildTime: b.buildTimeDays,
+          placedAtEra: b.placedAtEra ?? 0,
+        })),
     })
-  }, [islandBuildings, syncFromConvex])
+  }, [islandBuildings, islandDetails, syncFromConvex])
 
   useEffect(() => {
     if (!islandGoals) return
@@ -243,6 +251,7 @@ export function IslandPage() {
   const devGoodDayMut = useMutation(api.dev.goodDay)
   const devBadDayMut = useMutation(api.dev.badDay)
   const devLevelUpMut = useMutation(api.dev.levelUp)
+  const graduateEraMut = useMutation(api.islands.graduateEra)
 
   const bootstrap = useMemo<GameBootstrapData | null>(() => {
     if (!islandDetails || !islandDetails.island) return null
@@ -269,14 +278,18 @@ export function IslandPage() {
     const progressInLevel = Math.max(0, totalXp - level * 20)
     const xp = Math.min(100, Math.round((progressInLevel / 20) * 100))
 
-    const buildings: Building[] = (islandBuildings ?? []).map((b) => ({
-      id: b._id,
-      type: b.type as BuildingType,
-      pos: [b.gridX, b.gridY] as [number, number],
-      district: 'main' as DistrictId,
-      buildProgress: b.buildProgress,
-      buildTime: b.buildTimeDays,
-    }))
+    const currentEra = islandDetails.island.era ?? 0
+    const buildings: Building[] = (islandBuildings ?? [])
+      .filter((b) => (b.placedAtEra ?? 0) === currentEra)
+      .map((b) => ({
+        id: b._id,
+        type: b.type as BuildingType,
+        pos: [b.gridX, b.gridY] as [number, number],
+        district: 'main' as DistrictId,
+        buildProgress: b.buildProgress,
+        buildTime: b.buildTimeDays,
+        placedAtEra: b.placedAtEra ?? 0,
+      }))
 
     return {
       islandName: islandDetails.island.name,
@@ -287,6 +300,7 @@ export function IslandPage() {
       coins: islandDetails.island.currency ?? 0,
       streak: islandDetails.island.streakDays ?? 0,
       dayCount: islandDetails.island.dayCount ?? 1,
+      islandEra: currentEra,
       serverNowMs: islandDetails.serverNowMs,
       agents,
       goals: mapIslandGoalsToUiGoals(
@@ -341,9 +355,13 @@ export function IslandPage() {
         if (!islandId) return Promise.reject(new Error('Missing island id'))
         return devLevelUpMut({ islandId }).then(() => undefined)
       },
+      onGraduateEra: () => {
+        if (!islandId) return Promise.reject(new Error('Missing island id'))
+        return graduateEraMut({ islandId }).then(() => undefined)
+      },
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [islandDetails, islandGoals, islandBuildings, dailyCheckIns, phone, userEmail, participantIdentity, islandId, checkInMut, placeBuildingMut, devGoodDayMut, devBadDayMut, devLevelUpMut])
+  }, [islandDetails, islandGoals, islandBuildings, dailyCheckIns, phone, userEmail, participantIdentity, islandId, checkInMut, placeBuildingMut, devGoodDayMut, devBadDayMut, devLevelUpMut, graduateEraMut])
 
   if (!islandId) {
     return (

@@ -14,6 +14,9 @@ export default defineSchema({
     dayCount: v.optional(v.number()),
     lastCheckInDate: v.optional(v.string()),
     lastBuildTickAt: v.optional(v.number()),
+    // Graduation era (0 = Pine Hollow, 1 = Amber Ridge, …). Undefined/0 for
+    // islands created before this field existed — treated as era 0.
+    era: v.optional(v.number()),
     difficulty: v.union(v.literal("easy"), v.literal("normal"), v.literal("hard")),
     gridSize: v.object({
       width: v.number(),
@@ -84,6 +87,10 @@ export default defineSchema({
     placedBy: v.string(),
     placedAt: v.number(),
     completedAt: v.optional(v.number()),
+    // Graduation era at which this building was placed. Used to hide old-era
+    // buildings once the player flies to the next island (they still live in
+    // the table so visits can browse history). Undefined = legacy = era 0.
+    placedAtEra: v.optional(v.number()),
   }).index("by_island", ["islandId"]),
 
   events: defineTable({

@@ -40,6 +40,7 @@ export const createIsland = mutation({
       currency: 300,
       streakDays: 0,
       dayCount: 1,
+      era: 0,
       difficulty: "normal",
       gridSize: {
         width: 10,
@@ -160,6 +161,20 @@ export const activateIsland = mutation({
 
     await ctx.db.patch(args.islandId, { status: "active" });
     return true;
+  },
+});
+
+// Graduate the island to the next era. Buildings from the previous era keep
+// their `placedAtEra` tag so they stay in the table (for visiting history)
+// but are filtered out of the active-era view on the client.
+export const graduateEra = mutation({
+  args: { islandId: v.id("islands") },
+  async handler(ctx, { islandId }) {
+    const island = await ctx.db.get(islandId);
+    if (!island) throw new Error("Island not found");
+    const nextEra = (island.era ?? 0) + 1;
+    await ctx.db.patch(islandId, { era: nextEra });
+    return { era: nextEra };
   },
 });
 
