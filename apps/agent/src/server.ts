@@ -7,23 +7,35 @@ type SpectrumApp = Awaited<ReturnType<typeof import("./photon/app.js")["createAp
 
 export const PORT = 3001;
 
-// Resolve an islandId to the list of phones that originally hosted /start on
-// iMessage. Prefer `groupRooms.participants` (frozen at /start time) over
-// islandMembers (may accrete extra web-only phones that'd re-route sends).
+// Resolve an islandId to every phone on that island. Uses `islandMembers`
+// (full roster, updated whenever anyone joins via iMessage OR the web) so
+// a group announcement reaches the whole team instead of just the creator
+// that ran /start. `groupRooms.participants` is only captured at /start
+// time and doesn't include web-only joiners, so it's used as a last-resort
+// fallback if islandMembers is empty.
 async function phonesForIsland(islandId: string): Promise<string[]> {
-  const room: { participants?: string[] } | null = await convex.query(
-    "groupRooms:getByIsland" as any,
-    { islandId: islandId as any },
-  );
-  if (room?.participants?.length) return room.participants;
-  // Fallback: islandMembers (web-only island, no /start ever happened).
-  const details: { members?: { phoneNumber: string }[] } = await convex.query(
-    "islands:getIslandDetails" as any,
-    { islandId: islandId as any },
-  );
-  return (details?.members ?? [])
-    .map((m) => m.phoneNumber)
-    .filter((p): p is string => typeof p === "string" && p.length > 0);
+  try {
+    const details: { members?: { phoneNumber: string }[] } = await convex.query(
+      "islands:getIslandDetails" as any,
+      { islandId: islandId as any },
+    );
+    const phones = (details?.members ?? [])
+      .map((m) => m.phoneNumber)
+      .filter((p): p is string => typeof p === "string" && p.length > 0);
+    if (phones.length) return phones;
+  } catch (err) {
+    console.error("[phonesForIsland] getIslandDetails failed:", err);
+  }
+  // Fallback: whatever /start captured.
+  try {
+    const room: { participants?: string[] } | null = await convex.query(
+      "groupRooms:getByIsland" as any,
+      { islandId: islandId as any },
+    );
+    return room?.participants ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export function startHttpServer(app: SpectrumApp): http.Server {
