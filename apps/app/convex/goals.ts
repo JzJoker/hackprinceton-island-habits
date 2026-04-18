@@ -26,6 +26,43 @@ export const addGoals = mutation({
   },
 });
 
+// Archive a goal (soft-delete). Used by iMessage /drop.
+export const archiveGoal = mutation({
+  args: { goalId: v.id("goals") },
+  async handler(ctx, args) {
+    const goal = await ctx.db.get(args.goalId);
+    if (!goal) throw new Error("Goal not found");
+    await ctx.db.patch(args.goalId, {
+      status: "archived",
+      archivedAt: Date.now(),
+    });
+    return true;
+  },
+});
+
+// Edit a goal by archiving the old one and creating a new active goal that
+// references the original via parentGoalId (preserves history).
+export const editGoal = mutation({
+  args: { goalId: v.id("goals"), newText: v.string() },
+  async handler(ctx, args) {
+    const oldGoal = await ctx.db.get(args.goalId);
+    if (!oldGoal) throw new Error("Goal not found");
+    await ctx.db.patch(args.goalId, {
+      status: "archived",
+      archivedAt: Date.now(),
+    });
+    const newGoalId = await ctx.db.insert("goals", {
+      islandId: oldGoal.islandId,
+      phoneNumber: oldGoal.phoneNumber,
+      text: args.newText,
+      status: "active",
+      createdAt: Date.now(),
+      parentGoalId: args.goalId,
+    });
+    return await ctx.db.get(newGoalId);
+  },
+});
+
 // Get all goals for a user on an island
 export const getGoals = query({
   args: {
