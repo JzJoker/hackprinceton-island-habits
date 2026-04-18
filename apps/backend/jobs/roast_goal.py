@@ -13,9 +13,5 @@ def roast_goal():
     if not player_name or not proposed_goal:
         return jsonify({"error": "player_name and proposed_goal are required"}), 400
 
-    try:
-        result = _roast_goal(player_name, proposed_goal)
-    except ValueError as e:
-        return jsonify({"error": "K2 returned non-JSON", "raw": str(e)}), 502
-
-    return jsonify(result)
+    message = _roast_goal(player_name, proposed_goal)
+    return jsonify({"message": message})

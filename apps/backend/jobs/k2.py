@@ -31,7 +31,14 @@ def call_k2(system: str, user: str, max_tokens: int = 200) -> str:
         timeout=30,
     )
     r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"].strip()
+    content = r.json()["choices"][0]["message"]["content"]
+    # K2-Think emits reasoning before the answer. The API sometimes strips the
+    # opening <think> tag, leaving orphaned reasoning + </think>. Handle both forms.
+    if "</think>" in content:
+        content = content[content.rfind("</think>") + len("</think>"):].strip()
+    else:
+        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+    return content
 
 
 def call_k2_json(system: str, user: str, max_tokens: int = 200) -> dict:
@@ -40,14 +47,14 @@ def call_k2_json(system: str, user: str, max_tokens: int = 200) -> dict:
     raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
     # Strip markdown code fences
     raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
-    # If multiple JSON objects exist, grab the first one
-    m = re.search(r"\{.*\}", raw, flags=re.DOTALL)
-    if m:
-        raw = m.group(0)
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        raise ValueError(f"K2 returned non-JSON: {raw}")
+    # K2 sometimes emits the schema template before the real answer.
+    # Try each flat {...} block from last to first to find a parseable object.
+    for m in reversed(list(re.finditer(r"\{[^{}]+\}", raw, re.DOTALL))):
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            continue
+    raise ValueError(f"K2 returned non-JSON: {raw}")
 
 
 # ── Named helpers ─────────────────────────────────────────────────────────────
@@ -100,9 +107,9 @@ def generate_personality(
     return call_k2_json(_load("prompt_personality_generator.md"), user, max_tokens=200)
 
 
-def roast_goal(player_name: str, proposed_goal: str) -> dict:
+def roast_goal(player_name: str, proposed_goal: str) -> str:
     user = f"Player name: {player_name}\nProposed goal: {proposed_goal}"
-    return call_k2_json(_load("prompt_goal_roaster.md"), user, max_tokens=400)
+    return call_k2(_load("prompt_goal_roaster.md"), user, max_tokens=120)
 
 
 def generate_agent_gossip(agent_personality: dict, recent_events: list) -> dict:

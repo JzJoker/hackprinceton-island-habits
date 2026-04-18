@@ -226,14 +226,15 @@ async function handleGoals(space: any, sender: string): Promise<void> {
   await space.send(text(`Your goals on ${island.name}:\n${lines.join("\n")}`));
 }
 
-async function roastGoal(playerName: string, proposedGoal: string): Promise<{ accepted: boolean; message: string }> {
+async function roastGoal(playerName: string, proposedGoal: string): Promise<string> {
   const res = await fetch(`${BACKEND_URL}/jobs/roast-goal`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ player_name: playerName, proposed_goal: proposedGoal }),
   });
   if (!res.ok) throw new Error(`roast-goal HTTP ${res.status}`);
-  return res.json() as Promise<{ accepted: boolean; message: string }>;
+  const body = await res.json() as { message: string };
+  return body.message;
 }
 
 async function handleAdd(space: any, sender: string, goalText: string): Promise<void> {
@@ -247,19 +248,12 @@ async function handleAdd(space: any, sender: string, goalText: string): Promise<
     return;
   }
 
-  // Run goal through K2 roaster before saving
-  let roast: { accepted: boolean; message: string };
+  // Get roast commentary from K2 (fire-and-forget on failure)
+  let roastMsg = "";
   try {
-    roast = await roastGoal(sender, goalText);
+    roastMsg = await roastGoal(sender, goalText);
   } catch (err: any) {
-    console.error("[/add] roast-goal failed, skipping roast:", err?.message ?? err);
-    // Fall through and add the goal anyway if the backend is unreachable
-    roast = { accepted: true, message: "" };
-  }
-
-  if (!roast.accepted) {
-    await space.send(text(roast.message));
-    return;
+    console.error("[/add] roast-goal failed, skipping:", err?.message ?? err);
   }
 
   await convex.mutation("goals:addGoals" as any, {
@@ -274,9 +268,8 @@ async function handleAdd(space: any, sender: string, goalText: string): Promise<
 
   const count = goals.length;
   const plural = count === 1 ? "" : "s";
-  const confirmMsg = roast.message ||
-    `🌱 Planted "${goalText}" on ${island.name}. You're tending ${count} goal${plural} now.`;
-  await space.send(text(confirmMsg));
+  const fallback = `🌱 Planted "${goalText}" on ${island.name}. ${count} goal${plural} growing.`;
+  await space.send(text(roastMsg || fallback));
 }
 
 async function handleDrop(space: any, sender: string, index: number): Promise<void> {
