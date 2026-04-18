@@ -1,16 +1,21 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { defaultActivity, defaultMovementState } from "./lib/agentState";
+import { normalizeParticipantId } from "./lib/identity";
 
 // Look up an agent for a user on an island
 export const getAgent = query({
   args: { islandId: v.id("islands"), phoneNumber: v.string() },
-  handler: async (ctx, args) =>
-    ctx.db
+  handler: async (ctx, args) => {
+    const phoneNumber = normalizeParticipantId(args.phoneNumber);
+    const matches = await ctx.db
       .query("agents")
       .withIndex("by_island_phone", (q) =>
-        q.eq("islandId", args.islandId).eq("phoneNumber", args.phoneNumber)
+        q.eq("islandId", args.islandId).eq("phoneNumber", phoneNumber)
       )
-      .first(),
+      .collect();
+    return matches[0] ?? null;
+  },
 });
 
 // Create agent personality for a user on an island
@@ -23,9 +28,12 @@ export const createAgent = mutation({
     reminderVariants: v.optional(v.array(v.string())),
   },
   async handler(ctx, args) {
+    const phoneNumber = normalizeParticipantId(args.phoneNumber);
+    const now = Date.now();
+    const trimmedGoals = args.goals.map((goal) => goal.trim()).filter(Boolean);
     const personality =
       args.personalityProfile ??
-      `A helpful island companion committed to supporting your goals: ${args.goals.join(", ")}`;
+      `A helpful island companion committed to supporting your goals: ${trimmedGoals.join(", ") || "consistency"}`;
 
     const variants = args.reminderVariants ?? [
       "Good morning! Time to tackle your goals!",
@@ -35,13 +43,37 @@ export const createAgent = mutation({
       "Another day, another chance to grow!",
     ];
 
+    const existingRows = await ctx.db
+      .query("agents")
+      .withIndex("by_island_phone", (q) =>
+        q.eq("islandId", args.islandId).eq("phoneNumber", phoneNumber)
+      )
+      .collect();
+
+    if (existingRows.length > 0) {
+      const [keep, ...dupes] = [...existingRows].sort((a, b) => a.createdAt - b.createdAt);
+      for (const duplicate of dupes) {
+        await ctx.db.delete(duplicate._id);
+      }
+      await ctx.db.patch(keep._id, {
+        personalityProfile: keep.personalityProfile || personality,
+        reminderVariants: keep.reminderVariants?.length ? keep.reminderVariants : variants,
+        motivation: Math.max(0, Math.min(100, keep.motivation ?? 100)),
+        currentActivity: keep.currentActivity || defaultActivity(),
+        movementState: keep.movementState ?? defaultMovementState(`${args.islandId}:${phoneNumber}`, now),
+      });
+      return await ctx.db.get(keep._id);
+    }
+
     const agentId = await ctx.db.insert("agents", {
       islandId: args.islandId,
-      phoneNumber: args.phoneNumber,
+      phoneNumber,
       personalityProfile: personality,
       motivation: 100,
       reminderVariants: variants,
-      createdAt: Date.now(),
+      currentActivity: defaultActivity(),
+      movementState: defaultMovementState(`${args.islandId}:${phoneNumber}`, now),
+      createdAt: now,
     });
 
     return await ctx.db.get(agentId);
@@ -62,9 +94,9 @@ export const getAgentDirectoryForUser = query({
     messageLimit: v.optional(v.number()),
   },
   async handler(ctx, args) {
-    const identities = [args.phoneNumber, args.email].filter(
-      (v): v is string => typeof v === "string" && v.length > 0
-    );
+    const identities = [args.phoneNumber, args.email]
+      .filter((v): v is string => typeof v === "string" && v.length > 0)
+      .map((v) => normalizeParticipantId(v));
     if (identities.length === 0) return [];
 
     const islandIds = new Set<string>();
@@ -150,5 +182,51 @@ export const updateMotivation = mutation({
     const newMotivation = Math.max(0, Math.min(100, agent.motivation + args.delta));
     await ctx.db.patch(args.agentId, { motivation: newMotivation });
     return newMotivation;
+  },
+});
+
+export const setAgentActivity = mutation({
+  args: {
+    islandId: v.id("islands"),
+    phoneNumber: v.string(),
+    activity: v.string(),
+    movementMode: v.optional(
+      v.union(
+        v.literal("idle"),
+        v.literal("wander"),
+        v.literal("approach"),
+        v.literal("chat"),
+        v.literal("work"),
+      )
+    ),
+    phase: v.optional(v.number()),
+  },
+  async handler(ctx, args) {
+    const phoneNumber = normalizeParticipantId(args.phoneNumber);
+    const rows = await ctx.db
+      .query("agents")
+      .withIndex("by_island_phone", (q) =>
+        q.eq("islandId", args.islandId).eq("phoneNumber", phoneNumber)
+      )
+      .collect();
+    if (rows.length === 0) {
+      throw new Error("Agent not found");
+    }
+    const [keep, ...dupes] = [...rows].sort((a, b) => a.createdAt - b.createdAt);
+    for (const duplicate of dupes) {
+      await ctx.db.delete(duplicate._id);
+    }
+    const mode = args.movementMode ?? keep.movementState?.mode ?? "wander";
+    const phase = args.phase ?? keep.movementState?.phase ?? 0;
+    await ctx.db.patch(keep._id, {
+      currentActivity: args.activity.trim() || defaultActivity(),
+      movementState: {
+        mode,
+        seed: keep.movementState?.seed ?? defaultMovementState(`${args.islandId}:${phoneNumber}`).seed,
+        phase,
+        updatedAt: Date.now(),
+      },
+    });
+    return await ctx.db.get(keep._id);
   },
 });

@@ -103,7 +103,7 @@ export const advanceBuildProgress = mutation({
 export const recordWeeklySummary = mutation({
   args: {
     islandId: v.id("islands"),
-    agentId: v.id("agents"),
+    agentId: v.optional(v.id("agents")),
     content: v.string(),
     stats: v.any(),
   },
@@ -114,12 +114,14 @@ export const recordWeeklySummary = mutation({
       payload: { content, stats },
       timestamp: Date.now(),
     });
-    await ctx.db.insert("aiMessages", {
-      agentId,
-      channel: "imessage_group",
-      content,
-      context: stats,  // schema now accepts v.any()
-      sentAt: Date.now(),
-    });
+    if (agentId) {
+      await ctx.db.insert("aiMessages", {
+        agentId,
+        channel: "imessage_group",
+        content,
+        context: stats,  // schema now accepts v.any()
+        sentAt: Date.now(),
+      });
+    }
   },
 });

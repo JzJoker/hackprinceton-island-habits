@@ -13,6 +13,9 @@ export default defineSchema({
     streakDays: v.optional(v.number()),
     dayCount: v.optional(v.number()),
     lastCheckInDate: v.optional(v.string()),
+    // Last UTC date for which building progress was advanced from the
+    // daily check-in pathway. Prevents same-day double-advance races.
+    lastBuildAdvanceDate: v.optional(v.string()),
     lastBuildTickAt: v.optional(v.number()),
     // Graduation era (0 = Pine Hollow, 1 = Amber Ridge, …). Undefined/0 for
     // islands created before this field existed — treated as era 0.
@@ -35,7 +38,8 @@ export default defineSchema({
   })
     .index("by_island", ["islandId"])
     .index("by_phone", ["phoneNumber"])
-    .index("by_island_phone", ["islandId", "phoneNumber"]),
+    .index("by_island_phone", ["islandId", "phoneNumber"])
+    .index("by_island_joined", ["islandId", "joinedAt"]),
 
   agents: defineTable({
     islandId: v.id("islands"),
@@ -43,6 +47,21 @@ export default defineSchema({
     personalityProfile: v.string(),
     motivation: v.number(),
     reminderVariants: v.array(v.string()),
+    // Human-readable activity state shown across clients.
+    currentActivity: v.string(),
+    // Shared movement state primitives so clients can animate consistently.
+    movementState: v.object({
+      mode: v.union(
+        v.literal("idle"),
+        v.literal("wander"),
+        v.literal("approach"),
+        v.literal("chat"),
+        v.literal("work"),
+      ),
+      seed: v.number(),
+      phase: v.number(),
+      updatedAt: v.number(),
+    }),
     createdAt: v.number(),
   })
     .index("by_island", ["islandId"])
@@ -58,7 +77,8 @@ export default defineSchema({
     parentGoalId: v.optional(v.id("goals")),
   })
     .index("by_island", ["islandId"])
-    .index("by_island_phone", ["islandId", "phoneNumber"]),
+    .index("by_island_phone", ["islandId", "phoneNumber"])
+    .index("by_island_phone_status", ["islandId", "phoneNumber", "status"]),
 
   checkIns: defineTable({
     goalId: v.id("goals"),
@@ -69,7 +89,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_goal", ["goalId"])
-    .index("by_island_date", ["islandId", "date"]),
+    .index("by_island_date", ["islandId", "date"])
+    .index("by_goal_phone_date", ["goalId", "phoneNumber", "date"]),
 
   buildings: defineTable({
     islandId: v.id("islands"),
@@ -140,4 +161,28 @@ export default defineSchema({
     timestamp: v.number(),
     reasoning: v.optional(v.string()),
   }).index("by_island", ["islandId"]),
+
+  // Persistent mapping from iMessage group-space id to island.
+  // This enforces one room code per group chat, independent of sender identity.
+  groupRooms: defineTable({
+    spaceId: v.string(),
+    islandId: v.id("islands"),
+    code: v.string(),
+    participants: v.array(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+  })
+    .index("by_space", ["spaceId"])
+    .index("by_island", ["islandId"]),
+
+  // Per-island gossip slot claims so only one client triggers a conversation
+  // for a given time slot.
+  gossipTurns: defineTable({
+    islandId: v.id("islands"),
+    slot: v.number(),
+    agentAPhone: v.string(),
+    agentBPhone: v.string(),
+    claimedAt: v.number(),
+  }).index("by_island_slot", ["islandId", "slot"]),
 });

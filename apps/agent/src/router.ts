@@ -68,14 +68,20 @@ export function toEmailLike(value: unknown): string | null {
   return null;
 }
 
+export function normalizeParticipantId(value: unknown): string | null {
+  const phone = toE164Like(value);
+  if (phone && phone.replace(/\D/g, "") !== BOT_PHONE) return phone;
+  const email = toEmailLike(value);
+  if (email) return email.toLowerCase();
+  return null;
+}
+
 export function senderAddress(message: any): string | null {
   const s = message?.sender ?? {};
   const candidates = [s.phoneNumber, s.address, s.email, s.id];
   for (const c of candidates) {
-    const phone = toE164Like(c);
-    if (phone && phone.replace(/\D/g, "") !== BOT_PHONE) return phone;
-    const email = toEmailLike(c);
-    if (email) return email;
+    const participant = normalizeParticipantId(c);
+    if (participant) return participant;
   }
   return null;
 }
@@ -89,17 +95,21 @@ export function collectParticipants(space: any, message: any): string[] {
   raw.push(message?.sender?.phoneNumber, message?.sender?.address, message?.sender?.email, message?.sender?.id);
   const out = new Set<string>();
   for (const v of raw) {
-    const phone = toE164Like(v);
-    if (phone && phone.replace(/\D/g, "") !== BOT_PHONE) out.add(phone);
-    const email = toEmailLike(v);
-    if (email) out.add(email);
+    const participant = normalizeParticipantId(v);
+    if (participant) out.add(participant);
   }
   return [...out];
 }
 
 // ── Convex helpers ────────────────────────────────────────────────────
 
-export async function resolveSenderIsland(sender: string): Promise<Island | null> {
+export async function resolveSenderIsland(sender: string, spaceId?: string): Promise<Island | null> {
+  if (spaceId) {
+    const room = await convex.query("groupRooms:getBySpace" as any, { spaceId });
+    if (room?.island) {
+      return room.island as Island;
+    }
+  }
   const islands: Island[] = await convex.query("islands:getIslandsByPhone" as any, { phoneNumber: sender });
   if (!islands.length) return null;
   const active = islands.filter((i) => i.status === "active");
@@ -115,8 +125,8 @@ export type GoalLookup =
   | { ok: true; island: Island; goal: Goal; goals: Goal[] }
   | { ok: false; reason: "no-island" | "no-goals" | "out-of-range"; count?: number };
 
-export async function lookupGoalByIndex(sender: string, index1: number): Promise<GoalLookup> {
-  const island = await resolveSenderIsland(sender);
+export async function lookupGoalByIndex(sender: string, index1: number, spaceId?: string): Promise<GoalLookup> {
+  const island = await resolveSenderIsland(sender, spaceId);
   if (!island) return { ok: false, reason: "no-island" };
   const goals = await fetchGoals(island._id, sender);
   if (!goals.length) return { ok: false, reason: "no-goals" };
@@ -187,6 +197,24 @@ export const HELP_TEXT =
 // ── Handlers ──────────────────────────────────────────────────────────
 
 export async function handleStart(space: any, message: any): Promise<void> {
+  const existingRoom = await convex.query("groupRooms:getBySpace" as any, { spaceId: space.id });
+  if (existingRoom?.room && existingRoom?.island) {
+    const participants = collectParticipants(space, message);
+    if (participants.length) {
+      await convex.mutation("groupRooms:syncParticipants" as any, {
+        spaceId: space.id,
+        participants,
+      });
+    }
+    markOnboarded(space.id);
+    await space.send(
+      text(
+        `Island already started for this group.\n\nRoom Code: ${existingRoom.room.code}\nJoin: ${APP_BASE_URL}/dashboard?code=${existingRoom.room.code}`
+      )
+    );
+    return;
+  }
+
   if (hasOnboarded(space.id)) {
     await space.send(text("The start process has already been initiated."));
     return;
@@ -199,8 +227,14 @@ export async function handleStart(space: any, message: any): Promise<void> {
   try {
     const result: any = await convex.mutation("islands:createIsland" as any, { phoneNumbers: participants });
     const code = result.code as string;
+    await convex.mutation("groupRooms:bindSpaceToIsland" as any, {
+      spaceId: space.id,
+      islandId: result.islandId,
+      code,
+      participants,
+    });
     markOnboarded(space.id);
-    await space.send(text(`Island Habits started.\n\nRoom Code: ${code}\nJoin: ${APP_BASE_URL}/?code=${code}`));
+    await space.send(text(`Island Habits started.\n\nRoom Code: ${code}\nJoin: ${APP_BASE_URL}/dashboard?code=${code}`));
     console.log(`[/start] code=${code} participants=${participants.join(",")}`);
   } catch (err: any) {
     console.error("[/start] failed:", err?.message ?? err);
@@ -208,8 +242,8 @@ export async function handleStart(space: any, message: any): Promise<void> {
   }
 }
 
-export async function handleGoals(space: any, sender: string): Promise<void> {
-  const island = await resolveSenderIsland(sender);
+export async function handleGoals(space: any, sender: string, spaceId?: string): Promise<void> {
+  const island = await resolveSenderIsland(sender, spaceId);
   if (!island) {
     await space.send(text("I couldn't find an island for you yet. Ask someone to run /start in your group."));
     return;
@@ -233,12 +267,12 @@ async function roastGoal(playerName: string, proposedGoal: string): Promise<{ me
   return await res.json() as { message: string, reasoning?: string };
 }
 
-export async function handleAdd(space: any, sender: string, goalText: string): Promise<void> {
+export async function handleAdd(space: any, sender: string, goalText: string, spaceId?: string): Promise<void> {
   if (!goalText) {
     await space.send(text("Usage: /add <goal text>"));
     return;
   }
-  const island = await resolveSenderIsland(sender);
+  const island = await resolveSenderIsland(sender, spaceId);
   if (!island) {
     await space.send(text("I couldn't find an island for you. Run /start first."));
     return;
@@ -255,6 +289,11 @@ export async function handleAdd(space: any, sender: string, goalText: string): P
   }
 
   await convex.mutation("goals:addGoals" as any, {
+    islandId: island._id,
+    phoneNumber: sender,
+    goals: [goalText],
+  });
+  await convex.mutation("agents:createAgent" as any, {
     islandId: island._id,
     phoneNumber: sender,
     goals: [goalText],
@@ -285,8 +324,8 @@ export async function handleAdd(space: any, sender: string, goalText: string): P
   }
 }
 
-export async function handleDrop(space: any, sender: string, index: number): Promise<void> {
-  const lookup = await lookupGoalByIndex(sender, index);
+export async function handleDrop(space: any, sender: string, index: number, spaceId?: string): Promise<void> {
+  const lookup = await lookupGoalByIndex(sender, index, spaceId);
   if (!lookup.ok) {
     if (lookup.reason === "no-island") {
       await space.send(text("I couldn't find an island for you. Run /start first."));
@@ -306,8 +345,8 @@ export async function handleDrop(space: any, sender: string, index: number): Pro
   }
 }
 
-export async function handleEdit(space: any, sender: string, index: number, newText: string): Promise<void> {
-  const lookup = await lookupGoalByIndex(sender, index);
+export async function handleEdit(space: any, sender: string, index: number, newText: string, spaceId?: string): Promise<void> {
+  const lookup = await lookupGoalByIndex(sender, index, spaceId);
   if (!lookup.ok) {
     if (lookup.reason === "no-island") {
       await space.send(text("I couldn't find an island for you. Run /start first."));
@@ -327,8 +366,8 @@ export async function handleEdit(space: any, sender: string, index: number, newT
   }
 }
 
-export async function handleStatus(space: any, sender: string): Promise<void> {
-  const island = await resolveSenderIsland(sender);
+export async function handleStatus(space: any, sender: string, spaceId?: string): Promise<void> {
+  const island = await resolveSenderIsland(sender, spaceId);
   if (!island) {
     await space.send(text("No island for you yet. Run /start in a group chat."));
     return;
@@ -358,8 +397,8 @@ export async function handleStatus(space: any, sender: string): Promise<void> {
   await space.send(text(lines.join("\n")));
 }
 
-export async function handleDone(space: any, sender: string, index: number): Promise<void> {
-  const lookup = await lookupGoalByIndex(sender, index);
+export async function handleDone(space: any, sender: string, index: number, spaceId?: string): Promise<void> {
+  const lookup = await lookupGoalByIndex(sender, index, spaceId);
   if (!lookup.ok) {
     if (lookup.reason === "no-island") {
       await space.send(text("I couldn't find an island for you. Run /start first."));
@@ -395,8 +434,8 @@ export async function handleDone(space: any, sender: string, index: number): Pro
   }
 }
 
-export async function handleUndo(space: any, sender: string, index: number): Promise<void> {
-  const lookup = await lookupGoalByIndex(sender, index);
+export async function handleUndo(space: any, sender: string, index: number, spaceId?: string): Promise<void> {
+  const lookup = await lookupGoalByIndex(sender, index, spaceId);
   if (!lookup.ok) {
     if (lookup.reason === "no-island") {
       await space.send(text("I couldn't find an island for you. Run /start first."));
@@ -464,14 +503,26 @@ export async function dispatchKnownCommand(
     return "no-sender";
   }
 
+  const participants = collectParticipants(space, message);
+  if (participants.length) {
+    try {
+      await convex.mutation("groupRooms:syncParticipants" as any, {
+        spaceId: space.id,
+        participants,
+      });
+    } catch (err) {
+      console.error("[router] failed to sync room participants:", err);
+    }
+  }
+
   switch (cmd.kind) {
-    case "goals":  await handleGoals(space, resolvedSender); break;
-    case "add":    await handleAdd(space, resolvedSender, cmd.text); break;
-    case "drop":   await handleDrop(space, resolvedSender, cmd.index); break;
-    case "edit":   await handleEdit(space, resolvedSender, cmd.index, cmd.text); break;
-    case "done":   await handleDone(space, resolvedSender, cmd.index); break;
-    case "undo":   await handleUndo(space, resolvedSender, cmd.index); break;
-    case "status": await handleStatus(space, resolvedSender); break;
+    case "goals":  await handleGoals(space, resolvedSender, space.id); break;
+    case "add":    await handleAdd(space, resolvedSender, cmd.text, space.id); break;
+    case "drop":   await handleDrop(space, resolvedSender, cmd.index, space.id); break;
+    case "edit":   await handleEdit(space, resolvedSender, cmd.index, cmd.text, space.id); break;
+    case "done":   await handleDone(space, resolvedSender, cmd.index, space.id); break;
+    case "undo":   await handleUndo(space, resolvedSender, cmd.index, space.id); break;
+    case "status": await handleStatus(space, resolvedSender, space.id); break;
   }
   return "handled";
 }

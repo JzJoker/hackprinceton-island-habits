@@ -28,8 +28,9 @@ export const getActiveMembersWithGoals = query({
         .withIndex("by_island_phone", (q) =>
           q.eq("islandId", member.islandId).eq("phoneNumber", member.phoneNumber)
         )
-        .unique();
-      if (!agent) continue;
+        .collect();
+      const canonicalAgent = [...agent].sort((a, b) => a.createdAt - b.createdAt)[0];
+      if (!canonicalAgent) continue;
 
       const goals = await ctx.db
         .query("goals")
@@ -41,7 +42,7 @@ export const getActiveMembersWithGoals = query({
 
       if (goals.length === 0) continue;
 
-      results.push({ phoneNumber: member.phoneNumber, agent, goals, island });
+      results.push({ phoneNumber: member.phoneNumber, agent: canonicalAgent, goals, island });
     }
 
     return results;
@@ -127,10 +128,11 @@ export const getUncheckedGoalsForDate = query({
         .withIndex("by_island_phone", (q) =>
           q.eq("islandId", goal.islandId).eq("phoneNumber", goal.phoneNumber)
         )
-        .unique();
-      if (!agent) continue;
+        .collect();
+      const canonicalAgent = [...agent].sort((a, b) => a.createdAt - b.createdAt)[0];
+      if (!canonicalAgent) continue;
 
-      results.push({ goal, island, phoneNumber: goal.phoneNumber, agent });
+      results.push({ goal, island, phoneNumber: goal.phoneNumber, agent: canonicalAgent });
     }
     return results;
   },
@@ -208,7 +210,17 @@ export const getIslandsForWeeklySummary = query({
         .filter((q) => q.gte(q.field("timestamp"), since))
         .collect();
 
-      results.push({ island, phones, events });
+      const checkInPhones = new Set(
+        events
+          .filter((event) => event.type === "check_in")
+          .map((event) => (event.payload as { phoneNumber?: string })?.phoneNumber)
+          .filter((value): value is string => Boolean(value))
+      );
+      const eligiblePhones = members
+        .filter((member) => member.joinedAt <= since || checkInPhones.has(member.phoneNumber))
+        .map((member) => member.phoneNumber);
+
+      results.push({ island, phones: eligiblePhones.length ? eligiblePhones : phones, events });
     }
 
     return results;

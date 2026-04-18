@@ -2,13 +2,15 @@ import { v } from "convex/values";
 import { mutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { defaultActivity, defaultMovementState } from "./lib/agentState";
+import { tryNormalizeParticipantId } from "./lib/identity";
 
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
 
 // Default motivation for a fresh agent — matches the UI fallback shown before
 // the agent row is created (mood ?? 70 in IslandPage/buildUiAgents).
-const DEFAULT_AGENT_MOTIVATION = 70;
+const DEFAULT_AGENT_MOTIVATION = 100;
 
 // The browser signs in with Clerk (phone or email), but the island may have
 // been created by Photon/iMessage using a different identifier. Try each
@@ -19,7 +21,9 @@ async function resolveMemberPhone(
   islandId: Id<"islands">,
   candidates: (string | undefined)[],
 ): Promise<string | undefined> {
-  const ids = candidates.filter((v): v is string => Boolean(v && v.length > 0));
+  const ids = candidates
+    .map((value) => tryNormalizeParticipantId(value))
+    .filter((value): value is string => Boolean(value));
   for (const id of ids) {
     const member = await ctx.db
       .query("islandMembers")
@@ -59,6 +63,8 @@ async function patchAgentMood(
     personalityProfile: "",
     motivation: clamp(DEFAULT_AGENT_MOTIVATION + delta, 0, 100),
     reminderVariants: [],
+    currentActivity: defaultActivity(),
+    movementState: defaultMovementState(`${islandId}:${phoneNumber}`),
     createdAt: Date.now(),
   });
 }

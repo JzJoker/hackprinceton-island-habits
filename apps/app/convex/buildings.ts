@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { tryNormalizeParticipantId } from "./lib/identity";
 
 export const getBuildings = query({
   args: { islandId: v.id("islands") },
@@ -31,7 +32,7 @@ export const tickBuildProgress = mutation({
     const buildings = await ctx.db
       .query("buildings")
       .withIndex("by_island", (q) => q.eq("islandId", islandId))
-      .filter((q) => q.neq(q.field("state"), "complete"))
+      .filter((q) => q.eq(q.field("state"), "constructing"))
       .collect();
     for (const b of buildings) {
       const rate = normalizedMotivation / (Math.max(1, b.buildTimeDays) * GAME_DAY_SECS);
@@ -65,9 +66,16 @@ export const placeBuilding = mutation({
     buildTimeDays: v.number(),
   },
   handler: async (ctx, args) => {
+    if (!Number.isFinite(args.gridX) || !Number.isFinite(args.gridY)) {
+      throw new Error("Invalid building coordinates");
+    }
+    if (!Number.isFinite(args.buildTimeDays) || args.buildTimeDays <= 0) {
+      throw new Error("Invalid build time");
+    }
     const island = await ctx.db.get(args.islandId);
     if (!island) throw new Error("Island not found");
     let availableCurrency = island.currency ?? 0;
+    const costPaid = Math.max(0, Math.round(args.costPaid));
 
     // Back-compat for older islands created before starter currency existed.
     // Grant one-time starter funds only for brand-new, empty islands.
@@ -78,18 +86,48 @@ export const placeBuilding = mutation({
     if (!hasAnyBuildings && availableCurrency === 0) {
       availableCurrency = 300;
     }
+
+    if (costPaid > availableCurrency) {
+      throw new Error("Not enough currency to place this structure");
+    }
+
+    const maxX = Math.max(1, Math.floor((island.gridSize?.width ?? 10) / 2));
+    const maxY = Math.max(1, Math.floor((island.gridSize?.height ?? 10) / 2));
+    if (Math.abs(args.gridX) > maxX || Math.abs(args.gridY) > maxY) {
+      throw new Error("Building placement is outside island bounds");
+    }
+
+    const currentEra = island.era ?? 0;
+    const occupied = await ctx.db
+      .query("buildings")
+      .withIndex("by_island", (q) => q.eq("islandId", args.islandId))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("gridX"), args.gridX),
+          q.eq(q.field("gridY"), args.gridY),
+          q.eq(q.field("placedAtEra"), currentEra),
+        )
+      )
+      .first();
+    if (occupied) {
+      throw new Error("Tile already occupied");
+    }
+
+    const normalizedPlacedBy = tryNormalizeParticipantId(args.placedBy);
+    const placedBy = normalizedPlacedBy ?? (args.placedBy.trim() || "unknown");
+
     const id = await ctx.db.insert("buildings", {
       ...args,
+      costPaid,
+      placedBy,
       footprint: { width: 1, height: 1 },
       state: "constructing",
       buildProgress: 0,
       placedAt: Date.now(),
-      placedAtEra: island.era ?? 0,
+      placedAtEra: currentEra,
     });
-    // Keep persistence/sync resilient: never reject placement due to
-    // stale client-side economy state. Clamp server currency at zero.
     await ctx.db.patch(args.islandId, {
-      currency: Math.max(0, availableCurrency - args.costPaid),
+      currency: availableCurrency - costPaid,
     });
     return id;
   },
