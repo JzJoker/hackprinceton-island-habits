@@ -210,13 +210,16 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
 
   useEffect(() => {
     if (!islandGoals) return
+    const myGoals = phoneNumber
+      ? islandGoals.filter((g) => g.phoneNumber === phoneNumber)
+      : islandGoals
     syncFromConvex({
       goals: mapIslandGoalsToUiGoals(
-        islandGoals,
+        myGoals,
         new Set((dailyCheckIns ?? []).map((checkIn) => checkIn.goalId)),
       ),
     })
-  }, [islandGoals, dailyCheckIns, syncFromConvex])
+  }, [islandGoals, dailyCheckIns, phoneNumber, syncFromConvex])
 
   return null
 }
@@ -304,7 +307,9 @@ export function IslandPage() {
       serverNowMs: islandDetails.serverNowMs,
       agents,
       goals: mapIslandGoalsToUiGoals(
-        islandGoals,
+        participantIdentity
+          ? (islandGoals ?? []).filter((g) => g.phoneNumber === participantIdentity)
+          : islandGoals,
         new Set((dailyCheckIns ?? []).map((c) => c.goalId)),
       ),
       buildings,
