@@ -92,6 +92,7 @@ function buildUiAgents(args: {
   persistedAgents: { phoneNumber: string; motivation?: number; reminderVariants?: string[] }[]
   islandGoals: { phoneNumber: string; text: string }[] | undefined
   meCandidates: Set<string>
+  displayNames?: Map<string, string>
 }): Agent[] {
   const goalsByPhone = new Map<string, string[]>()
   for (const goal of args.islandGoals ?? []) {
@@ -117,7 +118,7 @@ function buildUiAgents(args: {
 
       return {
         id,
-        name: participantDisplayName(id, index),
+        name: args.displayNames?.get(id) ? `${args.displayNames.get(id)!.split(' ')[0]} Jr.` : participantDisplayName(id, index),
         img: image,
         skin: palette.skin,
         shirt: palette.shirt,
@@ -164,6 +165,11 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
     api.goals.getTodayCheckIns,
     phoneNumber ? { islandId, phoneNumber, date: new Date().toISOString().slice(0, 10) } : 'skip',
   )
+  const memberPhones = islandDetails?.members.map((m) => m.phoneNumber).filter(Boolean) ?? []
+  const userProfiles = useQuery(
+    api.users.getByPhones,
+    memberPhones.length > 0 ? { phoneNumbers: memberPhones } : 'skip',
+  )
 
   useEffect(() => {
     if (!islandDetails?.island) return
@@ -172,11 +178,13 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
     const totalXp = islandDetails.island.xp ?? 0
     const progressInLevel = Math.max(0, totalXp - level * 20)
     const xp = Math.min(100, Math.round((progressInLevel / 20) * 100))
+    const displayNames = new Map((userProfiles ?? []).map((u) => [u.phoneNumber, u.displayName]))
     const agents = buildUiAgents({
       members: islandDetails.members,
       persistedAgents: islandDetails.agents,
       islandGoals,
       meCandidates,
+      displayNames,
     })
     syncFromConvex({
       level,
@@ -188,7 +196,7 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
       serverNowMs: islandDetails.serverNowMs,
       agents,
     })
-  }, [islandDetails, islandGoals, phoneNumber, syncFromConvex])
+  }, [islandDetails, islandGoals, phoneNumber, syncFromConvex, userProfiles])
 
   useEffect(() => {
     if (!islandBuildings) return
@@ -254,6 +262,11 @@ export function IslandPage() {
       ? { islandId, phoneNumber: participantIdentity, date: new Date().toISOString().slice(0, 10) }
       : 'skip',
   )
+  const islandMemberPhones = islandDetails?.members.map((m) => m.phoneNumber).filter(Boolean) ?? []
+  const islandUserProfiles = useQuery(
+    api.users.getByPhones,
+    islandMemberPhones.length > 0 ? { phoneNumbers: islandMemberPhones } : 'skip',
+  )
   const placeBuildingMut = useMutation(api.buildings.placeBuilding)
   const checkInMut = useMutation(api.goals.checkIn)
   const devGoodDayMut = useMutation(api.dev.goodDay)
@@ -274,11 +287,13 @@ export function IslandPage() {
     )
 
     const persistedGoalIds = new Set((islandGoals ?? []).map((goal) => goal._id))
+    const displayNames = new Map((islandUserProfiles ?? []).map((u) => [u.phoneNumber, u.displayName]))
     const agents = buildUiAgents({
       members: islandDetails.members,
       persistedAgents: islandDetails.agents,
       islandGoals,
       meCandidates,
+      displayNames,
     })
 
     const level = islandDetails.island.islandLevel ?? 0
@@ -371,7 +386,7 @@ export function IslandPage() {
       },
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [islandDetails, islandGoals, islandBuildings, todayCheckIns, phone, userEmail, participantIdentity, islandId, checkInMut, placeBuildingMut, devGoodDayMut, devBadDayMut, devLevelUpMut, graduateEraMut])
+  }, [islandDetails, islandGoals, islandBuildings, todayCheckIns, phone, userEmail, participantIdentity, islandId, checkInMut, placeBuildingMut, devGoodDayMut, devBadDayMut, devLevelUpMut, graduateEraMut, islandUserProfiles])
 
   if (!islandId) {
     return (
