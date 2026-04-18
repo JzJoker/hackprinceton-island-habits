@@ -19,7 +19,6 @@ interface Props {
   gossipText?: string | null;
   gossipFrozenFacingPos?: THREE.Vector3 | null;
   gossipApproachTarget?: THREE.Vector3 | null;
-  gatherTarget?: THREE.Vector3 | null;
 }
 
 const hashAgentId = (input: string): number => {
@@ -47,7 +46,6 @@ export const Agent3D = ({
   gossipText,
   gossipFrozenFacingPos,
   gossipApproachTarget,
-  gatherTarget,
 }: Props) => {
   const group = useRef<THREE.Group>(null);
   const bodyGroup = useRef<THREE.Group>(null);
@@ -124,19 +122,6 @@ export const Agent3D = ({
       const dz = gossipApproachTarget.z - pos.current.z;
       const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist > 0.15) {
-        const step = Math.min(pace * delta * 60 * delta, dist);
-        pos.current.x += (dx / dist) * step;
-        pos.current.z += (dz / dist) * step;
-        direction.set(dx, dz);
-        angle.current = Math.atan2(dx, dz);
-      }
-      pos.current.y = GROUND_Y;
-    } else if (gatherTarget) {
-      // ── Gather mode: walk toward a tree or rock ──
-      const dx = gatherTarget.x - pos.current.x;
-      const dz = gatherTarget.z - pos.current.z;
-      const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist > 0.9) {
         const step = Math.min(pace * delta * 60 * delta, dist);
         pos.current.x += (dx / dist) * step;
         pos.current.z += (dz / dist) * step;
@@ -221,16 +206,7 @@ export const Agent3D = ({
         nearestSite = building.pos;
       }
     }
-    // Also trigger work animation when at gather target
-    if (gatherTarget) {
-      const gdx = gatherTarget.x - pos.current.x;
-      const gdz = gatherTarget.z - pos.current.z;
-      if (Math.hypot(gdx, gdz) < 1.0) {
-        nearConstruction = true;
-        angle.current = Math.atan2(gdx, gdz);
-      }
-    }
-    if (!nearConstruction && nearestSite && nearestDist < 1.25) {
+    if (nearestSite && nearestDist < 1.25) {
       nearConstruction = true;
       angle.current = Math.atan2(nearestSite[0] - pos.current.x, nearestSite[1] - pos.current.z);
     } else if (direction.lengthSq() > 0.0001) {
