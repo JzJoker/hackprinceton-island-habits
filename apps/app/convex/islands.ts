@@ -142,19 +142,23 @@ export const getIslandsByPhone = query({
     phoneNumber: v.string(),
   },
   async handler(ctx, args) {
+    console.log("🔍 getIslandsByPhone called with:", args.phoneNumber);
     const members = await ctx.db
       .query("islandMembers")
       .withIndex("by_phone", (q) => q.eq("phoneNumber", args.phoneNumber))
       .collect();
 
+    console.log("📋 Found members:", members);
     const islands = [];
     for (const member of members) {
       const island = await ctx.db.get(member.islandId);
+      console.log("🏝️ Got island:", island);
       if (island) {
         islands.push(island);
       }
     }
 
+    console.log("✅ Returning islands:", islands);
     return islands;
   },
 });
