@@ -1,52 +1,224 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUser, useClerk } from '@clerk/clerk-react'
 import KnotapiJS from 'knotapi-js'
 
 const MERCHANT_ID = 19
 const KnotCtor =
-  (KnotapiJS as { default?: new () => { open: (options: unknown) => void } })
-    .default ??
+  (KnotapiJS as { default?: new () => { open: (options: unknown) => void } }).default ??
   (KnotapiJS as unknown as new () => { open: (options: unknown) => void })
 
 type SessionResponse = { session: string }
 
+/* ── Cozy font loader ─────────────────────────────────── */
+function useCozFont() {
+  useEffect(() => {
+    if (document.getElementById('island-fonts')) return
+    const link = document.createElement('link')
+    link.id = 'island-fonts'
+    link.rel = 'stylesheet'
+    link.href = 'https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;700;800;900&display=swap'
+    document.head.appendChild(link)
+  }, [])
+}
+
+/* ── Design tokens ────────────────────────────────────── */
+const C = {
+  bg:         'linear-gradient(160deg, #0f0a20 0%, #0a1428 30%, #081e14 65%, #050e08 100%)',
+  card:       'rgba(16, 8, 2, 0.88)',
+  cardBorder: 'rgba(255,200,80,0.12)',
+  text:       '#f0ebe0',
+  textMuted:  'rgba(220,200,140,0.55)',
+  textLabel:  'rgba(210,190,120,0.65)',
+  green:      '#4db368',
+}
+
+const fredoka = (size = 20): React.CSSProperties => ({
+  fontFamily: "'Fredoka One', cursive",
+  fontWeight: 400,
+  fontSize: `${size}px`,
+  color: C.text,
+})
+
+const nunito = (weight = 700, size = 14): React.CSSProperties => ({
+  fontFamily: "'Nunito', sans-serif",
+  fontWeight: weight,
+  fontSize: `${size}px`,
+})
+
+/* ── Button primitives ────────────────────────────────── */
+const BtnPrimary = ({
+  children, onClick, disabled, style,
+}: {
+  children: React.ReactNode
+  onClick?: () => void
+  disabled?: boolean
+  style?: React.CSSProperties
+}) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    style={{
+      background: disabled
+        ? 'rgba(77,179,104,0.35)'
+        : 'linear-gradient(135deg, #4db368 0%, #389150 100%)',
+      border: 'none',
+      borderRadius: '12px',
+      color: '#fff',
+      padding: '11px 20px',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      boxShadow: disabled ? 'none' : '0 4px 18px -4px rgba(60,180,90,0.55)',
+      transition: 'all 0.15s',
+      width: '100%',
+      ...nunito(900, 14),
+      ...style,
+    }}
+  >
+    {children}
+  </button>
+)
+
+const BtnGhost = ({
+  children, onClick, style,
+}: {
+  children: React.ReactNode
+  onClick?: () => void
+  style?: React.CSSProperties
+}) => (
+  <button
+    onClick={onClick}
+    style={{
+      background: 'rgba(255,255,255,0.06)',
+      border: '1.5px solid rgba(255,220,100,0.18)',
+      borderRadius: '12px',
+      color: C.text,
+      padding: '11px 20px',
+      cursor: 'pointer',
+      transition: 'all 0.15s',
+      width: '100%',
+      ...nunito(800, 14),
+      ...style,
+    }}
+  >
+    {children}
+  </button>
+)
+
+const BtnDanger = ({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) => (
+  <button
+    onClick={onClick}
+    style={{
+      background: 'rgba(220,60,50,0.08)',
+      border: '1.5px solid rgba(220,60,50,0.25)',
+      borderRadius: '12px',
+      color: '#f87171',
+      padding: '12px 20px',
+      cursor: 'pointer',
+      transition: 'all 0.15s',
+      width: '100%',
+      ...nunito(800, 14),
+    }}
+  >
+    {children}
+  </button>
+)
+
+/* ── Card wrapper ─────────────────────────────────────── */
+const Card = ({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) => (
+  <div style={{
+    background: C.card,
+    border: `1px solid ${C.cardBorder}`,
+    borderRadius: '22px',
+    padding: '22px 20px',
+    ...style,
+  }}>
+    {children}
+  </div>
+)
+
+const CardTitle = ({ emoji, children }: { emoji: string; children: React.ReactNode }) => (
+  <h2 style={{ ...fredoka(20), margin: '0 0 18px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+    <span>{emoji}</span>
+    <span>{children}</span>
+  </h2>
+)
+
+/* ── Info row ─────────────────────────────────────────── */
+const InfoRow = ({ label, value }: { label: string; value: string }) => (
+  <div style={{
+    paddingBottom: '12px',
+    marginBottom: '12px',
+    borderBottom: '1px solid rgba(255,200,80,0.07)',
+  }}>
+    <p style={{ ...nunito(700, 11), color: C.textLabel, textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 2px' }}>
+      {label}
+    </p>
+    <p style={{ ...nunito(800, 15), color: C.text, margin: 0 }}>{value}</p>
+  </div>
+)
+
+/* ── Alert banners ────────────────────────────────────── */
+const AlertSuccess = ({ children }: { children: React.ReactNode }) => (
+  <div style={{ background: 'rgba(77,179,104,0.12)', border: '1px solid rgba(77,179,104,0.3)', borderRadius: '12px', padding: '10px 14px', marginTop: '10px' }}>
+    <p style={{ ...nunito(700, 12), color: '#86efac', margin: 0 }}>✓ {children}</p>
+  </div>
+)
+
+const AlertError = ({ children }: { children: React.ReactNode }) => (
+  <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: '12px', padding: '10px 14px', marginTop: '10px' }}>
+    <p style={{ ...nunito(700, 12), color: '#fca5a5', margin: 0 }}>⚠️ {children}</p>
+  </div>
+)
+
+/* ── Styled input ─────────────────────────────────────── */
+const GameInput = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
+  <input
+    {...props}
+    style={{
+      width: '100%',
+      boxSizing: 'border-box',
+      background: 'rgba(255,255,255,0.06)',
+      border: '2px solid rgba(255,255,255,0.1)',
+      borderRadius: '12px',
+      color: C.text,
+      padding: '10px 14px',
+      fontSize: '14px',
+      fontFamily: "'Nunito', sans-serif",
+      fontWeight: 700,
+      outline: 'none',
+      ...props.style,
+    }}
+  />
+)
+
+/* ══════════════════════════════════════════════════════ */
 export function SettingsPage() {
+  useCozFont()
   const navigate = useNavigate()
-  const { user } = useUser()
+  const { user }    = useUser()
   const { signOut } = useClerk()
 
   const [connectingMerchants, setConnectingMerchants] = useState(false)
-  const [merchantConnected, setMerchantConnected] = useState(false)
-  const [knotError, setKnotError] = useState<string | null>(null)
-  const [editingEmail, setEditingEmail] = useState(false)
-  const [emailValue, setEmailValue] = useState(
-    (user?.unsafeMetadata?.icloudEmail as string) ?? ''
-  )
-  const [savingEmail, setSavingEmail] = useState(false)
-  const [emailSaved, setEmailSaved] = useState(false)
-  const [emailError, setEmailError] = useState<string | null>(null)
+  const [merchantConnected,   setMerchantConnected]   = useState(false)
+  const [knotError,           setKnotError]           = useState<string | null>(null)
+  const [editingEmail,        setEditingEmail]        = useState(false)
+  const [emailValue,          setEmailValue]          = useState((user?.unsafeMetadata?.icloudEmail as string) ?? '')
+  const [savingEmail,         setSavingEmail]         = useState(false)
+  const [emailSaved,          setEmailSaved]          = useState(false)
+  const [emailError,          setEmailError]          = useState<string | null>(null)
 
   const handleSaveEmail = async () => {
     try {
       setSavingEmail(true)
       setEmailError(null)
-
-      // Validate email format
       if (emailValue && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
         setEmailError('Invalid email format')
         setSavingEmail(false)
         return
       }
-
-      // Update Clerk user metadata
       await user?.update({
-        unsafeMetadata: {
-          ...(user?.unsafeMetadata || {}),
-          icloudEmail: emailValue || null,
-        },
+        unsafeMetadata: { ...(user?.unsafeMetadata || {}), icloudEmail: emailValue || null },
       })
-
       setEmailSaved(true)
       setTimeout(() => setEmailSaved(false), 3000)
       setEditingEmail(false)
@@ -58,43 +230,28 @@ export function SettingsPage() {
   }
 
   const handleConnectMerchants = async () => {
-    const backendBaseUrl = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:5001'
-    const knotClientId = import.meta.env.VITE_KNOT_CLIENT_ID ?? ''
-    const knotEnvironment =
-      (import.meta.env.VITE_KNOT_ENVIRONMENT as 'development' | 'production') ??
-      'production'
+    const backendBaseUrl  = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:5001'
+    const knotClientId    = import.meta.env.VITE_KNOT_CLIENT_ID ?? ''
+    const knotEnvironment = (import.meta.env.VITE_KNOT_ENVIRONMENT as 'development' | 'production') ?? 'production'
 
     setKnotError(null)
     setConnectingMerchants(true)
     try {
-      if (!knotClientId) {
-        throw new Error('Missing VITE_KNOT_CLIENT_ID in frontend env.')
-      }
-
+      if (!knotClientId) throw new Error('Missing VITE_KNOT_CLIENT_ID in frontend env.')
       const response = await fetch(`${backendBaseUrl}/api/knot/session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user?.id }),
       })
-      if (!response.ok) {
-        throw new Error(await response.text())
-      }
+      if (!response.ok) throw new Error(await response.text())
       const data = (await response.json()) as SessionResponse
-
-      // Fresh instance per invocation to avoid stale state
       const knotapi = new KnotCtor()
-
       knotapi.open({
-        sessionId: data.session,
-        clientId: knotClientId,
-        environment: knotEnvironment,
-        entryPoint: 'settings',
-        merchantIds: [MERCHANT_ID],
-        useCategories: false,
-        useSearch: false,
+        sessionId: data.session, clientId: knotClientId,
+        environment: knotEnvironment, entryPoint: 'settings',
+        merchantIds: [MERCHANT_ID], useCategories: false, useSearch: false,
         onSuccess: (details: unknown) => {
-          setMerchantConnected(true)
-          setConnectingMerchants(false)
+          setMerchantConnected(true); setConnectingMerchants(false)
           console.log('onSuccess', details)
         },
         onError: (errorCode: string, errorDescription: string) => {
@@ -102,21 +259,11 @@ export function SettingsPage() {
           setKnotError(`${errorCode}: ${errorDescription}`)
           setConnectingMerchants(false)
         },
-        onEvent: (
-          event: string,
-          merchant: string,
-          payload: unknown,
-          taskId: string,
-        ) => {
+        onEvent: (event: string, merchant: string, payload: unknown, taskId: string) => {
           console.log('onEvent', event, merchant, payload, taskId)
-          if (event === 'AUTHENTICATED') {
-            setMerchantConnected(true)
-          }
+          if (event === 'AUTHENTICATED') setMerchantConnected(true)
         },
-        onExit: () => {
-          console.log('onExit')
-          setConnectingMerchants(false)
-        },
+        onExit: () => { console.log('onExit'); setConnectingMerchants(false) },
       })
     } catch (err) {
       setKnotError(err instanceof Error ? err.message : 'Failed to connect merchants.')
@@ -125,144 +272,144 @@ export function SettingsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-white px-4 py-8 text-black">
-      <div className="mx-auto max-w-2xl space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight text-black sm:text-4xl">
-              Settings
-            </h1>
-            <p className="text-neutral-600">Manage your account and connected services</p>
+    <main style={{ minHeight: '100vh', position: 'relative', overflow: 'hidden auto' }}>
+      {/* Background */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: C.bg }} />
+      <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 80% 50% at 50% 75%, rgba(18,80,45,0.18) 0%, transparent 100%)' }} />
+
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: '560px', margin: '0 auto', padding: '28px 16px 60px' }}>
+
+        {/* ── Header ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '28px' }}>
+          <div>
+            <h1 style={{ ...fredoka(30), margin: 0 }}>Settings</h1>
+            <p style={{ ...nunito(700, 13), color: C.textMuted, marginTop: '4px' }}>
+              Account &amp; connected services
+            </p>
           </div>
           <button
             onClick={() => navigate('/dashboard')}
-            className="rounded-lg border border-black bg-white px-4 py-2 font-semibold text-black transition hover:bg-neutral-100"
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              border: '1.5px solid rgba(255,220,100,0.18)',
+              borderRadius: '12px',
+              color: C.text,
+              padding: '9px 14px',
+              cursor: 'pointer',
+              flexShrink: 0,
+              ...nunito(800, 13),
+            }}
           >
-            Back
+            ← Back
           </button>
         </div>
 
-        {/* Account Section */}
-        <div className="rounded-lg border border-black bg-white p-6">
-          <h2 className="text-xl font-bold text-black mb-4">Account</h2>
-          <div className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+          {/* ── Account ── */}
+          <Card>
+            <CardTitle emoji="👤">Account</CardTitle>
+            <InfoRow label="Phone" value={user?.phoneNumbers?.[0]?.phoneNumber ?? 'Not set'} />
+            <InfoRow label="Name"  value={user?.fullName ?? 'Not set'} />
+
+            {/* iCloud email */}
             <div>
-              <p className="text-sm text-neutral-600">Phone</p>
-              <p className="text-base font-semibold text-black">
-                {user?.phoneNumbers?.[0]?.phoneNumber ?? 'Not set'}
+              <p style={{ ...nunito(700, 11), color: C.textLabel, textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 2px' }}>
+                iCloud Email
               </p>
-            </div>
-            <div>
-              <p className="text-sm text-neutral-600">Name</p>
-              <p className="text-base font-semibold text-black">
-                {user?.fullName ?? 'Not set'}
+              <p style={{ ...nunito(600, 11), color: C.textMuted, margin: '0 0 10px' }}>
+                Optional — lets party members find you via iMessage
               </p>
-            </div>
-            <div>
-              <p className="text-sm text-neutral-600">iCloud Email (Optional)</p>
-              <p className="text-xs text-neutral-500 mb-2">
-                Add your iCloud email to be discoverable in games via iMessage
-              </p>
+
               {!editingEmail ? (
-                <div className="flex items-center justify-between">
-                  <p className="text-base font-semibold text-black">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <p style={{ ...nunito(800, 15), color: C.text, margin: 0 }}>
                     {emailValue || 'Not set'}
                   </p>
                   <button
                     onClick={() => setEditingEmail(true)}
-                    className="text-sm text-black hover:text-neutral-600 font-semibold"
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px',
+                      color: C.green, ...nunito(800, 13),
+                    }}
                   >
-                    {emailValue ? 'Edit' : 'Add'}
+                    {emailValue ? 'Edit' : '+ Add'}
                   </button>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <input
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <GameInput
                     type="email"
                     value={emailValue}
-                    onChange={(e) => setEmailValue(e.target.value)}
+                    onChange={e => setEmailValue(e.target.value)}
                     placeholder="you@icloud.com"
-                    className="w-full rounded-lg border border-black bg-white px-4 py-2 text-black placeholder-neutral-500 focus:border-black focus:outline-none"
                   />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleSaveEmail}
-                      disabled={savingEmail}
-                      className="flex-1 rounded-lg bg-black px-4 py-2 font-semibold text-white transition hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <BtnPrimary onClick={handleSaveEmail} disabled={savingEmail} style={{ flex: 1, width: 'auto', padding: '10px' }}>
                       {savingEmail ? 'Saving...' : 'Save'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingEmail(false)
-                        setEmailError(null)
-                        setEmailValue((user?.unsafeMetadata?.icloudEmail as string) ?? '')
-                      }}
-                      className="flex-1 rounded-lg border border-black bg-white px-4 py-2 font-semibold text-black transition hover:bg-neutral-100"
+                    </BtnPrimary>
+                    <BtnGhost
+                      onClick={() => { setEditingEmail(false); setEmailError(null); setEmailValue((user?.unsafeMetadata?.icloudEmail as string) ?? '') }}
+                      style={{ flex: 1, width: 'auto', padding: '10px' }}
                     >
                       Cancel
-                    </button>
+                    </BtnGhost>
                   </div>
-                  {emailError && (
-                    <p className="text-sm text-black bg-red-50 border border-red-200 rounded p-2">
-                      Error: {emailError}
-                    </p>
-                  )}
+                  {emailError && <AlertError>{emailError}</AlertError>}
                 </div>
               )}
-              {emailSaved && (
-                <p className="text-sm text-black bg-green-50 border border-green-200 rounded p-2 mt-2">
-                  ✓ Email saved
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
 
-        {/* Merchants Section */}
-        <div className="rounded-lg border border-black bg-white p-6">
-          <h2 className="text-xl font-bold text-black mb-4">Connected Services</h2>
-          <div className="space-y-4">
-            <div className="border border-neutral-200 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
+              {emailSaved && <AlertSuccess>Email saved successfully</AlertSuccess>}
+            </div>
+          </Card>
+
+          {/* ── Connected Services ── */}
+          <Card>
+            <CardTitle emoji="🔗">Connected Services</CardTitle>
+
+            <div style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: `1px solid ${C.cardBorder}`,
+              borderRadius: '16px',
+              padding: '16px',
+              marginBottom: '10px',
+            }}>
+              {/* Service header */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', marginBottom: '14px' }}>
                 <div>
-                  <p className="font-semibold text-black">DoorDash Merchant Connection</p>
-                  <p className="text-sm text-neutral-600">Link your DoorDash account to track spending</p>
+                  <p style={{ ...nunito(800, 14), color: C.text, margin: 0 }}>DoorDash</p>
+                  <p style={{ ...nunito(600, 12), color: C.textMuted, marginTop: '2px' }}>
+                    Link account to track spending habits
+                  </p>
                 </div>
-                <div className={`text-sm font-semibold px-3 py-1 rounded ${merchantConnected ? 'bg-green-100 text-green-800' : 'bg-neutral-100 text-neutral-800'}`}>
-                  {merchantConnected ? 'Connected' : 'Not Connected'}
-                </div>
+                <span style={{
+                  ...nunito(800, 11),
+                  padding: '4px 10px',
+                  borderRadius: '20px',
+                  flexShrink: 0,
+                  background: merchantConnected ? 'rgba(77,179,104,0.15)'  : 'rgba(255,255,255,0.06)',
+                  color:      merchantConnected ? '#86efac'                 : C.textMuted,
+                  border:     merchantConnected ? '1px solid rgba(77,179,104,0.3)' : `1px solid ${C.cardBorder}`,
+                }}>
+                  {merchantConnected ? '✓ Connected' : 'Not connected'}
+                </span>
               </div>
-              <button
-                onClick={handleConnectMerchants}
-                disabled={connectingMerchants}
-                className="w-full rounded-lg border border-black bg-black px-4 py-2 font-semibold text-white transition hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {connectingMerchants ? 'Connecting...' : merchantConnected ? 'Reconnect' : 'Connect'}
-              </button>
-            </div>
-            {merchantConnected && (
-              <p className="text-sm text-black bg-green-50 border border-green-200 rounded p-3">
-                ✓ Merchant connected successfully.
-              </p>
-            )}
-            {knotError && (
-              <p className="text-sm text-black bg-red-50 border border-red-200 rounded p-3">
-                Error: {knotError}
-              </p>
-            )}
-          </div>
-        </div>
 
-        {/* Sign Out Section */}
-        <div className="rounded-lg border border-black bg-white p-6">
-          <h2 className="text-xl font-bold text-black mb-4">Session</h2>
-          <button
-            onClick={() => signOut()}
-            className="w-full rounded-lg border border-black bg-white px-4 py-2 font-semibold text-black transition hover:bg-neutral-100"
-          >
-            Sign Out
-          </button>
+              <BtnPrimary onClick={handleConnectMerchants} disabled={connectingMerchants} style={{ padding: '10px' }}>
+                {connectingMerchants ? 'Connecting...' : merchantConnected ? 'Reconnect' : 'Connect DoorDash'}
+              </BtnPrimary>
+            </div>
+
+            {merchantConnected && <AlertSuccess>Merchant connected successfully</AlertSuccess>}
+            {knotError         && <AlertError>{knotError}</AlertError>}
+          </Card>
+
+          {/* ── Session ── */}
+          <Card>
+            <CardTitle emoji="🚪">Session</CardTitle>
+            <BtnDanger onClick={() => signOut()}>Sign Out</BtnDanger>
+          </Card>
+
         </div>
       </div>
     </main>
