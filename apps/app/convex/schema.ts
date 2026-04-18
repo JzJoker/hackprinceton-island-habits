@@ -113,7 +113,7 @@ export default defineSchema({
     agentId: v.id("agents"),
     channel: v.union(v.literal("imessage_personal"), v.literal("imessage_group")),
     content: v.string(),
-    context: v.optional(v.string()),
+    context: v.optional(v.any()),
     sentAt: v.number(),
   })
     .index("by_agent", ["agentId"])

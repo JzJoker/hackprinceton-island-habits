@@ -28,6 +28,7 @@ def end_of_day_miss():
         already_missed = db.query("jobQueries:missAlreadyRecorded", {
             "goalId": goal["_id"],
             "date": today,
+            "islandId": island["_id"],
         })
         if already_missed:
             skipped += 1

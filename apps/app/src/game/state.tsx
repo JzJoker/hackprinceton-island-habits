@@ -532,25 +532,29 @@ export const GameProvider = ({
   }, [showToast]);
 
   const completeGoal = useCallback((id: string) => {
-    setGoals((gs) => gs.map((g) => g.id === id ? { ...g, done: true } : g));
-    const g = goals.find((x) => x.id === id);
-    if (g && !g.done) {
-      setCoins((c) => c + g.reward);
-      setXp((x) => Math.min(100, x + 5));
-      setLevel((l) => {
-        const newXp = Math.min(100, xp + 5);
-        return newXp >= 100 ? l + 1 : l;
-      });
-      // Completing a goal boosts your own mood (+6) and gives a small lift to friends (+2)
-      setAgents(as => as.map(a =>
-        a.isYou
-          ? { ...a, mood: Math.min(100, a.mood + 6) }
-          : { ...a, mood: Math.min(100, a.mood + 2) }
-      ));
-      showToast(`+${g.reward} coins · mood +6 🌟 · ${g.text} ✓`);
-    }
+    setGoals((gs) => {
+      const g = gs.find((x) => x.id === id);
+      if (g && !g.done) {
+        setCoins((c) => c + g.reward);
+        setXp((prevXp) => {
+          const newXp = prevXp + 5;
+          if (newXp >= 100) {
+            setLevel((l) => l + 1);
+            return 0;
+          }
+          return newXp;
+        });
+        setAgents(as => as.map(a =>
+          a.isYou
+            ? { ...a, mood: Math.min(100, a.mood + 6) }
+            : { ...a, mood: Math.min(100, a.mood + 2) }
+        ));
+        showToast(`+${g.reward} coins · mood +6 🌟 · ${g.text} ✓`);
+      }
+      return gs.map((g) => g.id === id ? { ...g, done: true } : g);
+    });
     setPendingCheckIn(null);
-  }, [goals, xp, showToast]);
+  }, [showToast]);
 
   const addGoal = useCallback((text: string, reward: number, photo?: boolean) => {
     setGoals((gs) => [...gs, { id: `g${Date.now()}`, text, done: false, reward, photo: photo ?? false }]);

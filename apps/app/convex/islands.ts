@@ -17,7 +17,19 @@ export const createIsland = mutation({
     phoneNumbers: v.array(v.string()), // Can contain phone numbers or emails
   },
   async handler(ctx, args) {
-    const code = generateCode();
+    let code = generateCode();
+    // Ensure code uniqueness
+    let existing = await ctx.db
+      .query("islands")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .first();
+    while (existing) {
+      code = generateCode();
+      existing = await ctx.db
+        .query("islands")
+        .withIndex("by_code", (q) => q.eq("code", code))
+        .first();
+    }
     const islandId = await ctx.db.insert("islands", {
       code,
       name: `Island ${code}`,
@@ -115,6 +127,14 @@ export const joinIsland = mutation({
       joinedAt: Date.now(),
       role: "member",
     });
+
+    // Keep denormalized phoneNumbers array in sync
+    const island = await ctx.db.get(args.islandId);
+    if (island && !island.phoneNumbers.includes(args.phoneNumber)) {
+      await ctx.db.patch(args.islandId, {
+        phoneNumbers: [...island.phoneNumbers, args.phoneNumber],
+      });
+    }
 
     return await ctx.db.get(memberId);
   },

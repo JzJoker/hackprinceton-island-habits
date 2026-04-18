@@ -1,9 +1,9 @@
-import { internalQuery } from "./_generated/server";
+import { query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 
 // Returns all active island members with their agent, active goals, and island
-export const getActiveMembersWithGoals = internalQuery({
+export const getActiveMembersWithGoals = query({
   args: {},
   handler: async (ctx) => {
     const members = await ctx.db.query("islandMembers").collect();
@@ -49,7 +49,7 @@ export const getActiveMembersWithGoals = internalQuery({
 });
 
 // Returns true if a personal reminder was already sent to this agent today
-export const reminderSentToday = internalQuery({
+export const reminderSentToday = query({
   args: { agentId: v.id("agents"), today: v.string() },
   handler: async (ctx, { agentId, today }) => {
     const startOfDay = new Date(today + "T00:00:00Z").getTime();
@@ -70,7 +70,7 @@ export const reminderSentToday = internalQuery({
 });
 
 // Count missed events for a phone number on an island in the last N days
-export const recentMissCount = internalQuery({
+export const recentMissCount = query({
   args: { islandId: v.id("islands"), phoneNumber: v.string(), days: v.number() },
   handler: async (ctx, { islandId, phoneNumber, days }) => {
     const since = Date.now() - days * 86400000;
@@ -91,7 +91,7 @@ export const recentMissCount = internalQuery({
 });
 
 // Returns all active goals that have no checkIn for the given date
-export const getUncheckedGoalsForDate = internalQuery({
+export const getUncheckedGoalsForDate = query({
   args: { date: v.string() },
   handler: async (ctx, { date }) => {
     const activeGoals = await ctx.db
@@ -137,12 +137,13 @@ export const getUncheckedGoalsForDate = internalQuery({
 });
 
 // Returns true if a miss event was already recorded for this goal on this date
-export const missAlreadyRecorded = internalQuery({
-  args: { goalId: v.id("goals"), date: v.string() },
-  handler: async (ctx, { goalId, date }) => {
+export const missAlreadyRecorded = query({
+  args: { goalId: v.id("goals"), date: v.string(), islandId: v.id("islands") },
+  handler: async (ctx, { goalId, date, islandId }) => {
     const startOfDay = new Date(date + "T00:00:00Z").getTime();
     const events = await ctx.db
       .query("events")
+      .withIndex("by_island", (q) => q.eq("islandId", islandId))
       .filter((q) =>
         q.and(
           q.eq(q.field("type"), "miss"),
@@ -158,7 +159,7 @@ export const missAlreadyRecorded = internalQuery({
 });
 
 // Returns all constructing buildings with their island's agents
-export const getConstructingBuildings = internalQuery({
+export const getConstructingBuildings = query({
   args: {},
   handler: async (ctx) => {
     const buildings = await ctx.db
@@ -179,7 +180,7 @@ export const getConstructingBuildings = internalQuery({
 });
 
 // Returns all active islands with their member phone numbers and last 7 days of events
-export const getIslandsForWeeklySummary = internalQuery({
+export const getIslandsForWeeklySummary = query({
   args: {},
   handler: async (ctx) => {
     const islands = await ctx.db
@@ -216,7 +217,7 @@ export const getIslandsForWeeklySummary = internalQuery({
 });
 
 // Get phone numbers for all members of an island
-export const getIslandPhoneNumbers = internalQuery({
+export const getIslandPhoneNumbers = query({
   args: { islandId: v.id("islands") },
   handler: async (ctx, { islandId }) => {
     const members = await ctx.db

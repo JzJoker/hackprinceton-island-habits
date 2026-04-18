@@ -52,6 +52,11 @@ export const placeBuilding = mutation({
     buildTimeDays: v.number(),
   },
   handler: async (ctx, args) => {
+    const island = await ctx.db.get(args.islandId);
+    if (!island) throw new Error("Island not found");
+    if ((island.currency ?? 0) < args.costPaid) {
+      throw new Error("Not enough currency");
+    }
     const id = await ctx.db.insert("buildings", {
       ...args,
       footprint: { width: 1, height: 1 },
@@ -59,12 +64,9 @@ export const placeBuilding = mutation({
       buildProgress: 0,
       placedAt: Date.now(),
     });
-    const island = await ctx.db.get(args.islandId);
-    if (island) {
-      await ctx.db.patch(args.islandId, {
-        currency: Math.max(0, (island.currency ?? 0) - args.costPaid),
-      });
-    }
+    await ctx.db.patch(args.islandId, {
+      currency: (island.currency ?? 0) - args.costPaid,
+    });
     return id;
   },
 });

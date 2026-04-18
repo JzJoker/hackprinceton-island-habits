@@ -123,13 +123,22 @@ export const checkIn = mutation({
       createdAt: Date.now(),
     });
 
+    // Record check_in event for weekly summary tracking
+    await ctx.db.insert("events", {
+      islandId: args.islandId,
+      type: "check_in",
+      payload: { goalId: args.goalId, phoneNumber: args.phoneNumber },
+      timestamp: Date.now(),
+    });
+
     // Update island XP and currency
     const island = await ctx.db.get(args.islandId);
     if (island) {
+      const newXp = island.xp + 1;
       await ctx.db.patch(args.islandId, {
-        xp: island.xp + 1,
-        currency: island.currency + 10, // 10 currency per check-in
-        islandLevel: Math.floor((island.xp + 1) / 20), // Simplified XP curve
+        xp: newXp,
+        currency: island.currency + 10,
+        islandLevel: Math.floor(newXp / 20),
       });
     }
 

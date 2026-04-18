@@ -1,7 +1,7 @@
-import { internalMutation } from "./_generated/server";
+import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 
-export const logAiMessage = internalMutation({
+export const logAiMessage = mutation({
   args: {
     agentId: v.id("agents"),
     channel: v.union(v.literal("imessage_personal"), v.literal("imessage_group")),
@@ -19,7 +19,7 @@ export const logAiMessage = internalMutation({
   },
 });
 
-export const recordMiss = internalMutation({
+export const recordMiss = mutation({
   args: {
     goalId: v.id("goals"),
     phoneNumber: v.string(),
@@ -47,7 +47,7 @@ export const recordMiss = internalMutation({
   },
 });
 
-export const damageConstructingBuilding = internalMutation({
+export const damageConstructingBuilding = mutation({
   args: { islandId: v.id("islands"), phoneNumber: v.string() },
   handler: async (ctx, { islandId, phoneNumber }) => {
     const building = await ctx.db
@@ -72,7 +72,7 @@ export const damageConstructingBuilding = internalMutation({
   },
 });
 
-export const advanceBuildProgress = internalMutation({
+export const advanceBuildProgress = mutation({
   args: {
     buildingId: v.id("buildings"),
     newProgress: v.number(),
@@ -100,7 +100,7 @@ export const advanceBuildProgress = internalMutation({
   },
 });
 
-export const recordWeeklySummary = internalMutation({
+export const recordWeeklySummary = mutation({
   args: {
     islandId: v.id("islands"),
     agentId: v.id("agents"),
@@ -118,7 +118,7 @@ export const recordWeeklySummary = internalMutation({
       agentId,
       channel: "imessage_group",
       content,
-      context: stats,
+      context: stats,  // schema now accepts v.any()
       sentAt: Date.now(),
     });
   },

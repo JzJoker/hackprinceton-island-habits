@@ -59,16 +59,16 @@ def _aggregate_stats(events: list, island: dict) -> dict:
     total = len(check_ins) + len(misses)
     completion_rate = (len(check_ins) / total) if total > 0 else 0.0
 
-    # Count per user
+    # Count per participant
     user_checkins: dict = {}
     for e in check_ins:
-        uid = (e.get("payload") or {}).get("userId", "unknown")
-        user_checkins[uid] = user_checkins.get(uid, 0) + 1
+        pid = (e.get("payload") or {}).get("phoneNumber", "unknown")
+        user_checkins[pid] = user_checkins.get(pid, 0) + 1
 
     user_misses: dict = {}
     for e in misses:
-        uid = (e.get("payload") or {}).get("userId", "unknown")
-        user_misses[uid] = user_misses.get(uid, 0) + 1
+        pid = (e.get("payload") or {}).get("phoneNumber", "unknown")
+        user_misses[pid] = user_misses.get(pid, 0) + 1
 
     top_completer = max(user_checkins, key=user_checkins.get) if user_checkins else None
     top_misser = max(user_misses, key=user_misses.get) if user_misses else None

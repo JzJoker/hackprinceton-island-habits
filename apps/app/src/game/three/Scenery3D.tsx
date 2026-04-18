@@ -186,6 +186,11 @@ export const Rock3D = ({ pos, variant }: { pos: [number, number]; variant: numbe
 };
 
 /* ── Flowers ────────────────── */
+function seededRandom(seed: number): number {
+  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
 export const Flower3D = ({ pos, variant }: { pos: [number, number]; variant: number }) => {
   const colors = ["#E58F7B", "#F2C46C", "#C9A0E0", "#FFB6C1", "#88CCDD", "#F4A8A8"];
   return (
@@ -193,7 +198,7 @@ export const Flower3D = ({ pos, variant }: { pos: [number, number]; variant: num
       <group position={[pos[0], 0.26, pos[1]]}>
         {[0, 1, 2, 3].map((i) => {
           const a = (i / 4) * Math.PI * 2 + variant * 0.5;
-          const r = 0.05 + Math.random() * 0.06;
+          const r = 0.05 + seededRandom(variant * 10 + i) * 0.06;
           return (
             <group key={i} position={[Math.cos(a) * r, 0, Math.sin(a) * r]}>
               <mesh>
@@ -221,21 +226,24 @@ export const Flower3D = ({ pos, variant }: { pos: [number, number]; variant: num
 };
 
 /* ── Grass tuft ──────────────────────────────────────── */
-export const GrassTuft = ({ pos }: { pos: [number, number] }) => (
+export const GrassTuft = ({ pos }: { pos: [number, number] }) => {
+  const seed = pos[0] * 73.1 + pos[1] * 119.3;
+  return (
   <WindSway pos={pos} intensity={1.8}>
     <group position={[pos[0], 0.27, pos[1]]}>
       {[0, 1, 2, 3, 4].map((i) => {
-        const a = i * 1.2 + Math.random();
-        const lean = (Math.random() - 0.5) * 0.3;
+        const s = seed + i;
+        const a = i * 1.2 + seededRandom(s);
+        const lean = (seededRandom(s + 50) - 0.5) * 0.3;
         return (
           <mesh
             key={i}
             position={[Math.cos(a) * 0.035, 0.05, Math.sin(a) * 0.035]}
             rotation={[lean, a, 0.05]}
           >
-            <coneGeometry args={[0.012, 0.1 + Math.random() * 0.04, 3]} />
+            <coneGeometry args={[0.012, 0.1 + seededRandom(s + 100) * 0.04, 3]} />
             <meshStandardMaterial
-              color={`hsl(${115 + Math.random() * 20}, ${40 + Math.random() * 15}%, ${38 + Math.random() * 12}%)`}
+              color={`hsl(${115 + seededRandom(s + 200) * 20}, ${40 + seededRandom(s + 300) * 15}%, ${38 + seededRandom(s + 400) * 12}%)`}
               roughness={0.8}
             />
           </mesh>
@@ -243,7 +251,8 @@ export const GrassTuft = ({ pos }: { pos: [number, number] }) => (
       })}
     </group>
   </WindSway>
-);
+  );
+};
 
 /* ── Renderer ────────────────────────────────────────── */
 export const SceneryRenderer = ({ scenery }: { scenery: Scenery[] }) => (
