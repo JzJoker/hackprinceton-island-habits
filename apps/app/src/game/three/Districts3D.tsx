@@ -62,6 +62,8 @@ const BumpyTerrain = ({
 
 /* ── Single district landmass with layered geology ──── */
 const DistrictLand = ({ d, overrideGrass, overrideCliff, overrideSand }: { d: District; overrideGrass?: string; overrideCliff?: string; overrideSand?: string }) => {
+  const terrainSeed = `${d.id}:${d.radius}:${d.center[0]}:${d.center[1]}:${d.color}`;
+
   // Bigger, more dramatic hills
   const hills = useMemo(() => {
     const arr: { x: number; z: number; r: number; h: number; color: string }[] = [];
@@ -88,7 +90,7 @@ const DistrictLand = ({ d, overrideGrass, overrideCliff, overrideSand }: { d: Di
       });
     }
     return arr;
-  }, [d]);
+  }, [terrainSeed, d.id, d.radius, d.color]);
 
   // Cliff rocks around perimeter — more rugged
   const cliffRocks = useMemo(
@@ -103,7 +105,7 @@ const DistrictLand = ({ d, overrideGrass, overrideCliff, overrideSand }: { d: Di
           rot: Math.random() * Math.PI,
         };
       }),
-    [d],
+    [terrainSeed, d.radius],
   );
 
   const grassPatches = useMemo(
@@ -125,7 +127,7 @@ const DistrictLand = ({ d, overrideGrass, overrideCliff, overrideSand }: { d: Di
               : `hsl(${120 + Math.random() * 20}, ${38 + Math.random() * 18}%, ${42 + Math.random() * 14}%)`,
         };
       }),
-    [d],
+    [terrainSeed, d.id, d.radius, d.color],
   );
 
   // Animated foam ring
@@ -352,13 +354,16 @@ export const DistrictsRenderer = () => {
   const tier = ISLAND_TIERS[displayEra];
 
   // Build a District-compatible object from the current island tier
-  const mainDistrict: District = {
-    ...DISTRICTS[0],
-    name: tier.name,
-    radius: tier.radius,
-    color: tier.grassColor,
-    unlocked: true,
-  };
+  const mainDistrict: District = useMemo(
+    () => ({
+      ...DISTRICTS[0],
+      name: tier.name,
+      radius: tier.radius,
+      color: tier.grassColor,
+      unlocked: true,
+    }),
+    [tier.name, tier.radius, tier.grassColor],
+  );
 
   return (
     <>

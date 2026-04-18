@@ -505,23 +505,6 @@ export const GameProvider = ({
     });
   }, [groupMotivation, showToast]);
 
-  // ── Day advancement helper ─────────────────────────────────────────────────
-  const advanceDay = useCallback((motOverride?: number) => {
-    const mot = motOverride ?? groupMotivation;
-    setBuildings(bs => {
-      let anyCompleted = false;
-      const next = bs.map(b => {
-        if (b.buildProgress >= 1) return b;
-        const dayProgress = mot / Math.max(1, b.buildTime);
-        const newProgress = Math.min(1, b.buildProgress + dayProgress);
-        if (newProgress >= 1 && b.buildProgress < 1) anyCompleted = true;
-        return { ...b, buildProgress: newProgress };
-      });
-      if (anyCompleted) setTimeout(() => showToast("🏗️ Building complete!"), 50);
-      return next;
-    });
-  }, [groupMotivation, showToast]);
-
   // Dev controls
   // ☀️✓ Good day: all goals get done → mood boost, streak up, coins earned
   const devNextDay = useCallback(() => {
@@ -532,8 +515,7 @@ export const GameProvider = ({
     showToast("☀️ Great day! All goals done · mood +8 · +50 coins");
     // Reset for tomorrow after toast
     setTimeout(() => setGoals(gs => gs.map(g => ({ ...g, done: false }))), 400);
-    advanceDay();
-  }, [showToast, advanceDay]);
+  }, [showToast]);
 
   // ☀️✗ Bad day: goals not done → mood drops, streak breaks
   const devNextDayBad = useCallback(() => {
@@ -541,9 +523,7 @@ export const GameProvider = ({
     setStreak(0); // streak breaks
     setAgents(as => as.map(a => a.isYou ? { ...a, mood: Math.max(10, a.mood - 15) } : a));
     showToast("😞 Missed goals · mood −15 · streak lost");
-    // Advance day with the now-lower motivation
-    advanceDay(groupMotivation * 0.5); // half progress because motivation dropped
-  }, [showToast, advanceDay, groupMotivation]);
+  }, [showToast]);
 
   const devLevelUp = useCallback(() => {
     setLevel(l => l + 1);

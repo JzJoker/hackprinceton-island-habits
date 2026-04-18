@@ -875,7 +875,7 @@ const Observatory = () => (
       );
     })}
     {/* Stone steps */}
-    {[-0.18, 0, 0.18].map((dz, i) => (
+    {[0, 1, 2].map((i) => (
       <mesh key={i} position={[0, 0.04 + i * 0.04, 0.68 - i * 0.05]}>
         <boxGeometry args={[0.38, 0.04, 0.14]} /><meshStandardMaterial color="#9B8E7E" />
       </mesh>

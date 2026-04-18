@@ -1,8 +1,10 @@
-import { useContext, useRef, useMemo, RefObject, useState, useCallback } from "react";
-import type React from "react";
+import { useContext, useRef, useMemo, useState, useCallback } from "react";
+import type { MutableRefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Sky, Cloud, Clouds, Environment, Float } from "@react-three/drei";
+import { OrbitControls, Environment, Float } from "@react-three/drei";
+import { EffectComposer, Pixelation, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useGame, GameCtx, ISLAND_TIERS } from "../state";
 import type { Agent } from "../state";
 import { Building3D } from "./Building3D";
@@ -11,116 +13,188 @@ import { SceneryRenderer, GrassTuft } from "./Scenery3D";
 import { DistrictsRenderer } from "./Districts3D";
 import { PlacementGhost } from "./PlacementGhost";
 
-/* ── Animated ocean water with realistic multi-layer waves ─ */
+/* ── Gradient skydome (A Short Hike-inspired palette) ─ */
+const SkyDome = () => {
+  const uniforms = useMemo(
+    () => ({
+      topColor: { value: new THREE.Color("#d4ecff") },
+      middleColor: { value: new THREE.Color("#bfe1ff") },
+      horizonColor: { value: new THREE.Color("#a9d6ff") },
+    }),
+    [],
+  );
+
+  return (
+    <mesh>
+      <sphereGeometry args={[500, 40, 20]} />
+      <shaderMaterial
+        side={THREE.BackSide}
+        depthWrite={false}
+        uniforms={uniforms}
+        vertexShader={`
+          varying float vY;
+          void main() {
+            vec4 worldPos = modelMatrix * vec4(position, 1.0);
+            vY = worldPos.y;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `}
+        fragmentShader={`
+          uniform vec3 topColor;
+          uniform vec3 middleColor;
+          uniform vec3 horizonColor;
+          varying float vY;
+          void main() {
+            float h = clamp((vY + 500.0) / 1000.0, 0.0, 1.0);
+            vec3 low  = mix(horizonColor, middleColor, smoothstep(0.04, 0.34, h));
+            vec3 high = mix(middleColor,  topColor,    smoothstep(0.24, 1.0,  h));
+            vec3 color = mix(low, high, smoothstep(0.12, 0.88, h));
+            gl_FragColor = vec4(color, 1.0);
+          }
+        `}
+      />
+    </mesh>
+  );
+};
+
+/* ── Solid low-poly cloud clusters placed high above island ─ */
+const SolidCloud = ({
+  position,
+  scale = 1,
+  color = "#fff3df",
+}: {
+  position: [number, number, number];
+  scale?: number;
+  color?: string;
+}) => {
+  const blobs = useMemo<[number, number, number, number][]>(
+    () => [
+      [0.0, 0.0, 0.0, 1.0],
+      [0.9, 0.15, -0.2, 0.82],
+      [-0.95, 0.05, 0.1, 0.76],
+      [0.25, 0.45, 0.55, 0.65],
+      [-0.35, 0.38, -0.55, 0.62],
+    ],
+    [],
+  );
+
+  return (
+    <group position={position} scale={scale}>
+      {blobs.map(([x, y, z, s], idx) => (
+        <mesh key={idx} position={[x, y, z]} castShadow={false} receiveShadow={false}>
+          <icosahedronGeometry args={[s, 0]} />
+          <meshStandardMaterial color={color} roughness={0.9} metalness={0.02} flatShading />
+        </mesh>
+      ))}
+    </group>
+  );
+};
+
+const CloudLayer = () => (
+  <group>
+    <Float speed={0.18} rotationIntensity={0.02} floatIntensity={0.22}>
+      <SolidCloud position={[-24, 18.5, -14]} scale={3.6} />
+    </Float>
+    <Float speed={0.16} rotationIntensity={0.015} floatIntensity={0.18}>
+      <SolidCloud position={[21, 20.0, -18]} scale={3.0} color="#fff7e9" />
+    </Float>
+    <Float speed={0.2} rotationIntensity={0.02} floatIntensity={0.2}>
+      <SolidCloud position={[-14, 22.0, 20]} scale={2.7} />
+    </Float>
+    <Float speed={0.15} rotationIntensity={0.012} floatIntensity={0.17}>
+      <SolidCloud position={[25, 19.5, 14]} scale={2.9} color="#fff6e5" />
+    </Float>
+  </group>
+);
+
+/* ── Animated ocean water with GPU ripples + soft fresnel edge ─ */
+const WATER_GEOMETRY = (() => {
+  const geo = new THREE.PlaneGeometry(220, 220, 80, 80);
+  geo.rotateX(-Math.PI / 2);
+  return geo;
+})();
+
 const Water = ({ color }: { color: string }) => {
-  const surfRef   = useRef<THREE.Mesh>(null);
-  const caust1Ref = useRef<THREE.Mesh>(null);
-  const caust2Ref = useRef<THREE.Mesh>(null);
-  const foam0 = useRef<THREE.Mesh>(null);
-  const foam1 = useRef<THREE.Mesh>(null);
-  const foam2 = useRef<THREE.Mesh>(null);
-  const originalPositions = useRef<Float32Array | null>(null);
-  const waveFrame = useRef(0);
-
-  const waveGeo = useMemo(() => {
-    const geo = new THREE.CircleGeometry(40, 72);
-    originalPositions.current = new Float32Array(geo.attributes.position.array);
-    return geo;
-  }, []);
-
-  const waterMat = useMemo(() => new THREE.MeshStandardMaterial({
-    color: new THREE.Color(color),
-    transparent: true,
-    opacity: 0.86,
-    metalness: 0.55,
-    roughness: 0.08,
-    envMapIntensity: 1.7,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [color]);
+  const matRef = useRef<THREE.ShaderMaterial>(null);
+  const uniforms = useMemo(() => {
+    const eraTint = new THREE.Color(color);
+    const shallow = eraTint.clone().lerp(new THREE.Color("#9be7ea"), 0.7);
+    const deep = eraTint.clone().lerp(new THREE.Color("#63bfca"), 0.8);
+    return {
+      uTime: { value: 0 },
+      uDeep: { value: deep },
+      uShallow: { value: shallow },
+      uEdge: { value: new THREE.Color("#d8fbff") },
+      uOpacity: { value: 0.9 },
+    };
+  }, [color]);
 
   useFrame(({ clock }) => {
-    const t = clock.elapsedTime;
-    waveFrame.current++;
-
-    if (waveFrame.current % 2 === 0 && surfRef.current && originalPositions.current) {
-      const pos  = surfRef.current.geometry.attributes.position;
-      const orig = originalPositions.current;
-      for (let i = 0; i < pos.count; i++) {
-        const x = orig[i * 3];
-        const y = orig[i * 3 + 1];
-        const dist = Math.sqrt(x * x + y * y);
-        const env = Math.min(1, Math.max(0, (dist - 3) / 7)) * Math.max(0, 1 - dist / 34);
-        if (env <= 0) { pos.setZ(i, 0); continue; }
-        const w1 = Math.sin(x * 0.28  + t * 0.82)        * 0.14;
-        const w2 = Math.cos(y * 0.33  - t * 0.68)        * 0.10;
-        const w3 = Math.sin((x + y)   * 0.55 + t * 1.55) * 0.045;
-        const w4 = Math.cos((x - y)   * 0.72 - t * 2.15) * 0.022;
-        pos.setZ(i, (w1 + w2 + w3 + w4) * env);
-      }
-      pos.needsUpdate = true;
-      if (waveFrame.current % 4 === 0) surfRef.current.geometry.computeVertexNormals();
+    if (!matRef.current) {
+      return;
     }
-
-    if (caust1Ref.current) caust1Ref.current.rotation.z =  t * 0.018;
-    if (caust2Ref.current) caust2Ref.current.rotation.z = -t * 0.025;
-
-    const foams = [foam0, foam1, foam2];
-    foams.forEach((ref, i) => {
-      if (!ref.current) return;
-      const ph = t * 0.65 + (i * Math.PI * 2) / 3;
-      const sc = 1 + Math.sin(ph) * 0.038;
-      ref.current.scale.set(sc, sc, 1);
-      (ref.current.material as THREE.MeshBasicMaterial).opacity =
-        0.12 + Math.sin(ph + 1.1) * 0.07;
-    });
+    matRef.current.uniforms.uTime.value = clock.elapsedTime;
   });
 
   return (
-    <group>
-      <mesh position={[0, -2.8, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[80, 32]} />
-        <meshStandardMaterial color="#0b1d2e" />
-      </mesh>
-      <mesh position={[0, -1.9, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[70, 40]} />
-        <meshStandardMaterial color="#173450" transparent opacity={0.92} />
-      </mesh>
-      <mesh position={[0, -1.1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[55, 48]} />
-        <meshStandardMaterial color="#1e4d6e" transparent opacity={0.78} />
-      </mesh>
-      <mesh ref={surfRef} position={[0, -0.5, 0]} rotation={[-Math.PI / 2, 0, 0]}
-        receiveShadow geometry={waveGeo} scale={[1.9, 1.9, 1]}>
-        <primitive object={waterMat} attach="material" />
-      </mesh>
-      <mesh ref={caust1Ref} position={[0, -0.47, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0, 24, 6, 4]} />
-        <meshBasicMaterial color="#7dd4fc" transparent opacity={0.07}
-          blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
-      <mesh ref={caust2Ref} position={[0, -0.46, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[3, 20, 5, 3]} />
-        <meshBasicMaterial color="#bae6fd" transparent opacity={0.05}
-          blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
-      <mesh ref={foam0} position={[0, -0.43, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[6.0, 6.65, 80]} />
-        <meshBasicMaterial color="#e0f7ff" transparent opacity={0.15} depthWrite={false} />
-      </mesh>
-      <mesh ref={foam1} position={[0, -0.42, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[6.35, 6.9, 80]} />
-        <meshBasicMaterial color="#f0faff" transparent opacity={0.12} depthWrite={false} />
-      </mesh>
-      <mesh ref={foam2} position={[0, -0.41, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[5.6, 6.2, 80]} />
-        <meshBasicMaterial color="#ffffff" transparent opacity={0.09} depthWrite={false} />
-      </mesh>
-      <mesh position={[0, -0.52, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[26, 42, 64, 1]} />
-        <meshBasicMaterial color={color} transparent opacity={0.14}
-          blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
-    </group>
+    <mesh geometry={WATER_GEOMETRY} position={[0, -0.68, 0]} receiveShadow renderOrder={-1}>
+      <shaderMaterial
+        ref={matRef}
+        uniforms={uniforms}
+        transparent
+        depthWrite={false}
+        vertexShader={`
+          uniform float uTime;
+          varying vec3 vWorldPos;
+          varying vec3 vWorldNormal;
+
+          void main() {
+            vec3 pos = position;
+
+            float w1 = sin((pos.x * 0.11) + uTime * 0.45) * 0.18;
+            float w2 = cos((pos.z * 0.09) - uTime * 0.38) * 0.15;
+            float w3 = sin((pos.x + pos.z) * 0.14 + uTime * 0.62) * 0.07;
+            pos.y += w1 + w2 + w3;
+
+            vec3 normalApprox = normalize(vec3(
+              -0.11 * cos((position.x * 0.11) + uTime * 0.45) - 0.14 * cos((position.x + position.z) * 0.14 + uTime * 0.62),
+               1.0,
+               0.09 * sin((position.z * 0.09) - uTime * 0.38) - 0.14 * cos((position.x + position.z) * 0.14 + uTime * 0.62)
+            ));
+
+            vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+            vWorldPos = worldPos.xyz;
+            vWorldNormal = normalize(mat3(modelMatrix) * normalApprox);
+
+            gl_Position = projectionMatrix * viewMatrix * worldPos;
+          }
+        `}
+        fragmentShader={`
+          uniform vec3 uDeep;
+          uniform vec3 uShallow;
+          uniform vec3 uEdge;
+          uniform float uOpacity;
+          uniform float uTime;
+          varying vec3 vWorldPos;
+          varying vec3 vWorldNormal;
+
+          void main() {
+            vec3 viewDir = normalize(cameraPosition - vWorldPos);
+            float fresnel = pow(1.0 - max(dot(normalize(vWorldNormal), viewDir), 0.0), 2.4);
+            float ripple = 0.5 + 0.5 * sin(vWorldPos.x * 0.09 + vWorldPos.z * 0.07 + uTime * 0.7);
+
+            vec3 base = mix(uDeep, uShallow, ripple * 0.7 + 0.15);
+            vec3 color = base + uEdge * fresnel * 0.55;
+
+            float radial = length(vWorldPos.xz) / 95.0;
+            float fade = 1.0 - smoothstep(0.82, 1.14, radial);
+            float alpha = uOpacity * fade;
+
+            gl_FragColor = vec4(color, alpha);
+          }
+        `}
+      />
+    </mesh>
   );
 };
 
@@ -205,8 +279,8 @@ const CameraTracker = ({
   controlsRef,
 }: {
   tracking: boolean;
-  agentPos: React.MutableRefObject<THREE.Vector3>;
-  controlsRef: React.MutableRefObject<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  agentPos: MutableRefObject<THREE.Vector3>;
+  controlsRef: MutableRefObject<OrbitControlsImpl | null>;
 }) => {
   useFrame(() => {
     if (!tracking || !controlsRef.current) return;
@@ -224,7 +298,7 @@ const ProximityDetector = ({
   onGossip,
 }: {
   agents: Agent[];
-  agentPositions: React.MutableRefObject<Map<string, THREE.Vector3>>;
+  agentPositions: MutableRefObject<Map<string, THREE.Vector3>>;
   onGossip: (a: Agent, b: Agent) => void;
 }) => {
   const timers = useRef(new Map<string, number>());
@@ -257,17 +331,6 @@ const ProximityDetector = ({
   return null;
 };
 
-/* ── Distance-based blur — applied to canvas wrapper div ─ */
-const ZoomBlur = ({ containerRef }: { containerRef: RefObject<HTMLDivElement> }) => {
-  useFrame(({ camera }) => {
-    if (!containerRef.current) return;
-    const dist = camera.position.length();
-    const blur = Math.max(0, Math.min(5, ((dist - 24) / 26) * 5));
-    containerRef.current.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : "";
-  });
-  return null;
-};
-
 /* ── Agent waypoints ─────────────────────────────────── */
 const WAYPOINTS: [number, number][] = [
   [-2.5,  1.2], [ 2.0, -1.0], [ 1.0,  3.0], [-3.5, -2.5], [ 4.0, -1.5],
@@ -276,15 +339,17 @@ const WAYPOINTS: [number, number][] = [
 ];
 
 /* ── Main scene ──────────────────────────────────────── */
-const BACKEND_URL = (import.meta as any).env?.VITE_BACKEND_URL ?? "http://localhost:5001";
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:5001";
+const GOSSIP_ENDPOINT = "/jobs/agent-gossip";
+const GOSSIP_BUBBLE_MS = 5000;
 
-const Scene = ({ agentTrackPos }: { agentTrackPos: React.MutableRefObject<THREE.Vector3> }) => {
+const Scene = ({ agentTrackPos }: { agentTrackPos: MutableRefObject<THREE.Vector3> }) => {
   const { agents, buildings, scenery, selectedAgent, setSelectedAgent, placingType, islandEra, viewingEra, islandHistory } = useGame();
   const agentPositions = useRef(new Map<string, THREE.Vector3>());
   const [gossipBubbles, setGossipBubbles] = useState<Map<string, string>>(new Map());
 
   const onGossip = useCallback((agentA: Agent, agentB: Agent) => {
-    fetch(`${BACKEND_URL}/jobs/agent-gossip`, {
+    void fetch(`${BACKEND_URL}${GOSSIP_ENDPOINT}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -293,13 +358,13 @@ const Scene = ({ agentTrackPos }: { agentTrackPos: React.MutableRefObject<THREE.
       }),
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
+      .then((data: { message?: string; gossip?: string; text?: string } | null) => {
         const msg = data?.message ?? data?.gossip ?? data?.text;
         if (!msg) return;
         setGossipBubbles((prev) => new Map(prev).set(agentA.id, msg));
         setTimeout(() => {
           setGossipBubbles((prev) => { const n = new Map(prev); n.delete(agentA.id); return n; });
-        }, 5000);
+        }, GOSSIP_BUBBLE_MS);
       })
       .catch(() => {});
   }, []);
@@ -312,21 +377,15 @@ const Scene = ({ agentTrackPos }: { agentTrackPos: React.MutableRefObject<THREE.
 
   return (
     <>
-      <Sky
-        sunPosition={tier.sunPos}
-        turbidity={tier.skyTurbidity}
-        rayleigh={tier.skyRayleigh}
-        mieCoefficient={0.003}
-        mieDirectionalG={0.92}
-      />
-      <fog attach="fog" args={[tier.fogColor, 28, 70]} />
-      <Environment preset="park" environmentIntensity={0.4} />
+      <SkyDome />
+      <fog attach="fog" args={["#cfe8ff", 30, 88]} />
+      <Environment preset="sunset" environmentIntensity={0.25} />
 
-      <ambientLight intensity={0.4} color="#E8DDD0" />
+      <ambientLight intensity={0.52} color="#ffe7c8" />
       <directionalLight
-        position={[8, 12, 6]}
-        intensity={1.6}
-        color="#FFF5E0"
+        position={[10, 14, 6]}
+        intensity={1.35}
+        color="#ffe9c7"
         castShadow
         shadow-mapSize={[1024, 1024]}
         shadow-camera-left={-15}
@@ -336,23 +395,10 @@ const Scene = ({ agentTrackPos }: { agentTrackPos: React.MutableRefObject<THREE.
         shadow-bias={-0.0003}
         shadow-normalBias={0.02}
       />
-      <directionalLight position={[-5, 4, -6]} intensity={0.3} color="#8AB4D0" />
-      <hemisphereLight args={["#A8D4F0", "#6B9848", 0.5]} />
+      <directionalLight position={[-6, 6, -8]} intensity={0.42} color="#9dc5e0" />
+      <hemisphereLight args={["#ffc595", "#6f9f67", 0.34]} />
 
-      <Clouds material={THREE.MeshBasicMaterial}>
-        <Float speed={0.4} rotationIntensity={0.1} floatIntensity={0.3}>
-          <Cloud segments={28} bounds={[4, 1.5, 2]} volume={3} color="#ffffff" position={[-6, 5.5, -4]} opacity={0.55} />
-        </Float>
-        <Float speed={0.3} rotationIntensity={0.05} floatIntensity={0.4}>
-          <Cloud segments={22} bounds={[3, 1, 1.5]} volume={2} color="#ffffff" position={[7, 6, 3]} opacity={0.45} />
-        </Float>
-        <Float speed={0.35} rotationIntensity={0.08} floatIntensity={0.35}>
-          <Cloud segments={20} bounds={[3.5, 1.2, 1.5]} volume={2.5} color="#ffffff" position={[0, 6.5, -7]} opacity={0.5} />
-        </Float>
-        <Float speed={0.25} rotationIntensity={0.06} floatIntensity={0.2}>
-          <Cloud segments={16} bounds={[2, 0.8, 1]} volume={1.5} color="#ffffff" position={[-8, 7, 5]} opacity={0.4} />
-        </Float>
-      </Clouds>
+      <CloudLayer />
 
       <Water color={tier.waterColor} />
 
@@ -379,7 +425,12 @@ const Scene = ({ agentTrackPos }: { agentTrackPos: React.MutableRefObject<THREE.
             setSelectedAgent(a.id);
           }}
           onPositionUpdate={(p) => {
-            agentPositions.current.set(a.id, p.clone());
+            const cached = agentPositions.current.get(a.id);
+            if (cached) {
+              cached.copy(p);
+            } else {
+              agentPositions.current.set(a.id, p.clone());
+            }
             if (a.isYou) agentTrackPos.current.copy(p);
           }}
           gossipText={gossipBubbles.get(a.id) ?? null}
@@ -402,11 +453,10 @@ export const Island3D = () => {
   const isPlacing = !!game?.placingType;
   const trackAgent = game?.trackAgent ?? false;
   const agentTrackPos = useRef(new THREE.Vector3());
-  const controlsRef = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
-  const canvasWrapRef = useRef<HTMLDivElement>(null);
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
   return (
-    <div ref={canvasWrapRef} style={{ width: "100%", height: "100%", willChange: "filter" }}>
+    <div style={{ width: "100%", height: "100%" }}>
       <Canvas
         shadows
         camera={{ position: [16, 13, 16], fov: 45, near: 0.5, far: 120 }}
@@ -421,7 +471,6 @@ export const Island3D = () => {
         <GameCtx.Provider value={game}>
           <Scene agentTrackPos={agentTrackPos} />
           <CameraTracker tracking={trackAgent} agentPos={agentTrackPos} controlsRef={controlsRef} />
-          <ZoomBlur containerRef={canvasWrapRef} />
           <OrbitControls
             ref={controlsRef}
             enablePan={false}
@@ -436,6 +485,10 @@ export const Island3D = () => {
             dampingFactor={0.05}
             zoomSpeed={2.2}
           />
+          <EffectComposer multisampling={0} enableNormalPass={false}>
+            <Pixelation granularity={1} />
+            <Vignette eskil={false} offset={0.18} darkness={0.34} />
+          </EffectComposer>
         </GameCtx.Provider>
       </Canvas>
     </div>

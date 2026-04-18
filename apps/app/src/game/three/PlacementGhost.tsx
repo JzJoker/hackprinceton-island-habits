@@ -4,6 +4,7 @@ import type { ThreeEvent } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { useGame, scorePlacement, BUILD_LIBRARY, ISLAND_TIERS } from "../state";
+import type { BuildingType } from "../state";
 import { Building3D } from "./Building3D";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -183,7 +184,16 @@ export const PlacementGhost = () => {
 
 const GhostBuildingPreview = ({ type, valid }: { type: string; valid: boolean }) => (
   <group>
-    <Building3D building={{ id: "ghost", type: type as any, pos: [0, 0], district: "main" }} />
+    <Building3D
+      building={{
+        id: "ghost",
+        type: type as BuildingType,
+        pos: [0, 0],
+        district: "main",
+        buildProgress: 1,
+        buildTime: 1,
+      }}
+    />
     <mesh position={[0, 0.5, 0]}>
       <sphereGeometry args={[0.6, 16, 16]} />
       <meshBasicMaterial color={valid ? "#7AC5A0" : "#E55A6B"} transparent opacity={0.15} />
