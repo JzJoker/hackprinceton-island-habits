@@ -1,7 +1,7 @@
 import { useContext, useRef, useMemo, useState, useCallback } from "react";
 import type { MutableRefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Environment, Float, Cloud, Clouds } from "@react-three/drei";
+import { OrbitControls, Environment, Float } from "@react-three/drei";
 import { EffectComposer, Pixelation, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
@@ -67,57 +67,70 @@ const SkyDome = () => {
   );
 };
 
+type CloudBlob = {
+  position: [number, number, number];
+  scale: [number, number, number];
+  rot: number;
+};
+
+const ROUNDED_CLOUD_BLOBS: CloudBlob[] = [
+  { position: [-1.7, 0.0, 0.06], scale: [1.5, 1.02, 1.16], rot: 0.12 },
+  { position: [-0.65, 0.26, -0.05], scale: [1.44, 1.08, 1.2], rot: 0.28 },
+  { position: [0.45, 0.14, 0.02], scale: [1.56, 1.02, 1.24], rot: -0.18 },
+  { position: [1.58, -0.08, 0.06], scale: [1.3, 0.94, 1.08], rot: 0.22 },
+  { position: [0.22, -0.42, 0.04], scale: [1.38, 0.8, 1.18], rot: 0.08 },
+];
+
+const RoundedCloud = ({
+  position,
+  scale = 1,
+  hueShift = 0,
+}: {
+  position: [number, number, number];
+  scale?: number;
+  hueShift?: number;
+}) => {
+  const colors = useMemo(() => {
+    const c0 = new THREE.Color("#ffffff");
+    const c1 = new THREE.Color("#f6fbff");
+    const c2 = new THREE.Color("#ecf5ff");
+    if (hueShift !== 0) {
+      c0.offsetHSL(hueShift, -0.01, 0);
+      c1.offsetHSL(hueShift, -0.01, 0);
+      c2.offsetHSL(hueShift, 0, 0);
+    }
+    return [`#${c0.getHexString()}`, `#${c1.getHexString()}`, `#${c2.getHexString()}`];
+  }, [hueShift]);
+
+  return (
+    <group position={position} scale={scale}>
+      {ROUNDED_CLOUD_BLOBS.map((blob, idx) => (
+        <group key={idx} position={blob.position} rotation={[0, blob.rot, 0]}>
+          <mesh castShadow={false} receiveShadow={false} scale={blob.scale}>
+            <sphereGeometry args={[1, 24, 20]} />
+            <meshLambertMaterial color={colors[idx % colors.length]} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+};
+
 const CloudLayer = () => (
-  <Clouds material={THREE.MeshBasicMaterial} limit={32} range={140}>
-    <Float speed={0.2} rotationIntensity={0.03} floatIntensity={0.18}>
-      <Cloud
-        seed={11}
-        segments={28}
-        bounds={[8.5, 2.8, 3.6]}
-        volume={8}
-        color="#fffdf7"
-        position={[-23, 19.5, -16]}
-        opacity={0.72}
-        fade={32}
-      />
+  <group>
+    <Float speed={0.2} rotationIntensity={0.03} floatIntensity={0.16}>
+      <RoundedCloud position={[-11.5, 11.0, -8.0]} scale={1.32} />
     </Float>
-    <Float speed={0.16} rotationIntensity={0.025} floatIntensity={0.16}>
-      <Cloud
-        seed={22}
-        segments={24}
-        bounds={[7.0, 2.2, 3.0]}
-        volume={6}
-        color="#fff8ef"
-        position={[20, 21.5, -20]}
-        opacity={0.68}
-        fade={30}
-      />
+    <Float speed={0.16} rotationIntensity={0.025} floatIntensity={0.14}>
+      <RoundedCloud position={[10.0, 12.0, -10.0]} scale={1.18} hueShift={-0.004} />
     </Float>
-    <Float speed={0.18} rotationIntensity={0.02} floatIntensity={0.15}>
-      <Cloud
-        seed={33}
-        segments={26}
-        bounds={[7.8, 2.4, 3.2]}
-        volume={7}
-        color="#ffffff"
-        position={[-15, 23.0, 18]}
-        opacity={0.7}
-        fade={31}
-      />
+    <Float speed={0.18} rotationIntensity={0.02} floatIntensity={0.13}>
+      <RoundedCloud position={[-7.5, 13.0, 9.0]} scale={1.1} hueShift={0.004} />
     </Float>
-    <Float speed={0.15} rotationIntensity={0.02} floatIntensity={0.14}>
-      <Cloud
-        seed={44}
-        segments={22}
-        bounds={[6.8, 2.0, 2.9]}
-        volume={5}
-        color="#fff9f1"
-        position={[26, 20.5, 14]}
-        opacity={0.66}
-        fade={29}
-      />
+    <Float speed={0.15} rotationIntensity={0.02} floatIntensity={0.12}>
+      <RoundedCloud position={[13.0, 11.6, 7.0]} scale={1.2} />
     </Float>
-  </Clouds>
+  </group>
 );
 
 /* ── Animated ocean water with GPU ripples + soft fresnel edge ─ */
@@ -295,11 +308,74 @@ const CameraTracker = ({
   agentPos: MutableRefObject<THREE.Vector3>;
   controlsRef: MutableRefObject<OrbitControlsImpl | null>;
 }) => {
-  useFrame(() => {
-    if (!tracking || !controlsRef.current) return;
-    const target = new THREE.Vector3(agentPos.current.x, 0.5, agentPos.current.z);
-    controlsRef.current.target.lerp(target, 0.06);
-    controlsRef.current.update();
+  const wasTracking = useRef(false);
+  const initialized = useRef(false);
+  const lastAgentPos = useRef(new THREE.Vector3());
+  const heading = useRef(0);
+  const desiredCamPos = useRef(new THREE.Vector3());
+  const desiredTarget = useRef(new THREE.Vector3());
+  const moveDelta = useRef(new THREE.Vector3());
+
+  useFrame((state, delta) => {
+    const controls = controlsRef.current;
+    if (!tracking || !controls) {
+      wasTracking.current = false;
+      return;
+    }
+    if (!wasTracking.current) {
+      initialized.current = false;
+      wasTracking.current = true;
+    }
+
+    const current = agentPos.current;
+    if (!initialized.current) {
+      lastAgentPos.current.copy(current);
+      const cameraDir = new THREE.Vector3(
+        state.camera.position.x - controls.target.x,
+        0,
+        state.camera.position.z - controls.target.z,
+      );
+      if (cameraDir.lengthSq() < 1e-5) {
+        cameraDir.set(0, 0, 1);
+      }
+      cameraDir.normalize();
+      heading.current = Math.atan2(-cameraDir.x, -cameraDir.z);
+      initialized.current = true;
+    }
+
+    moveDelta.current.copy(current).sub(lastAgentPos.current);
+    if (moveDelta.current.lengthSq() > 0.000004) {
+      const desiredHeading = Math.atan2(moveDelta.current.x, moveDelta.current.z);
+      let d = desiredHeading - heading.current;
+      d = ((d + Math.PI) % (Math.PI * 2)) - Math.PI;
+      heading.current += d * Math.min(1, delta * 9);
+    }
+
+    const sinH = Math.sin(heading.current);
+    const cosH = Math.cos(heading.current);
+    const followDistance = 3.5;
+    const followHeight = 1.55;
+    const shoulderOffset = 0.2;
+    const lookAhead = 0.38;
+
+    desiredCamPos.current.set(
+      current.x - sinH * followDistance - cosH * shoulderOffset,
+      followHeight,
+      current.z - cosH * followDistance + sinH * shoulderOffset,
+    );
+    desiredTarget.current.set(
+      current.x + sinH * lookAhead,
+      0.66,
+      current.z + cosH * lookAhead,
+    );
+
+    const camLerp = Math.min(1, delta * 7.8);
+    const targetLerp = Math.min(1, delta * 11);
+    state.camera.position.lerp(desiredCamPos.current, camLerp);
+    controls.target.lerp(desiredTarget.current, targetLerp);
+    controls.update();
+
+    lastAgentPos.current.copy(current);
   });
   return null;
 };
@@ -463,7 +539,6 @@ const Scene = ({ agentTrackPos }: { agentTrackPos: MutableRefObject<THREE.Vector
 /* ── Canvas wrapper ──────────────────────────────────── */
 export const Island3D = () => {
   const game = useContext(GameCtx);
-  const isPlacing = !!game?.placingType;
   const trackAgent = game?.trackAgent ?? false;
   const agentTrackPos = useRef(new THREE.Vector3());
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
@@ -487,13 +562,13 @@ export const Island3D = () => {
           <OrbitControls
             ref={controlsRef}
             enablePan={false}
-            minDistance={4}
-            maxDistance={55}
-            minPolarAngle={Math.PI / 6}
-            maxPolarAngle={Math.PI / 2.3}
+            enableRotate={!trackAgent}
+            minDistance={trackAgent ? 1.4 : 4}
+            maxDistance={trackAgent ? 9 : 55}
+            minPolarAngle={trackAgent ? Math.PI / 3.3 : Math.PI / 6}
+            maxPolarAngle={trackAgent ? Math.PI / 2.2 : Math.PI / 2.3}
             target={[0, 0.5, 0]}
-            autoRotate={!isPlacing && !trackAgent}
-            autoRotateSpeed={0.22}
+            autoRotate={false}
             enableDamping
             dampingFactor={0.05}
             zoomSpeed={2.2}
