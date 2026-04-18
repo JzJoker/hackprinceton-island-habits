@@ -461,10 +461,8 @@ export const GameProvider = ({
     const currentRadius = ISLAND_TIERS[islandEra].radius;
     const result = scorePlacement(placingType, pos, buildings, scenery, currentRadius);
     if (!result.valid) { showToast(result.reason || "Can't place here"); return false; }
-    if (coins < opt.cost) { showToast("Not enough coins"); return false; }
     const pendingId = `pending-${Date.now()}`;
     setPlacingType(null);
-    setCoins((c) => c - opt.cost);
     setBuildings((bs) => [
       ...bs,
       {
@@ -484,6 +482,7 @@ export const GameProvider = ({
       return true;
     }
 
+    showToast(`Placing ${opt.name}...`);
     Promise.resolve(persist(placingType, pos[0], pos[1], opt.cost, opt.buildDays))
       .then(() => {
         // Convex sync bridge will replace pending entries with canonical records.
@@ -492,13 +491,12 @@ export const GameProvider = ({
       .catch((err) => {
         console.error("Failed to persist building placement", err);
         setBuildings((bs) => bs.filter((b) => b.id !== pendingId));
-        setCoins((c) => c + opt.cost);
         const message = err instanceof Error ? err.message : "Failed to place building";
         showToast(message);
       });
 
     return true;
-  }, [placingType, buildings, scenery, coins, islandEra, showToast]);
+  }, [placingType, buildings, scenery, islandEra, showToast]);
 
   const cancelPlacing = useCallback(() => setPlacingType(null), []);
 
